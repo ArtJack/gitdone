@@ -83,14 +83,37 @@ class Coverage(RequirementCase):
         found = dict((i.ident, [r.num for r in rows]) for i, rows in self.coverage()["items"] if i.ident)
         self.assertEqual(found["REQ-1"], [])
 
-    def test_a_checklist_item_finds_its_row_by_its_words(self):
+    def test_a_checklist_item_finds_its_row_by_saying_the_same_words(self):
         found = dict((i.ident or i.words, [r.num for r in rows]) for i, rows in self.coverage()["items"])
         self.assertEqual(found["Weekly digest email"], [3])
 
-    def test_one_shared_word_is_not_the_same_work(self):
-        (self.repo / "docs" / "spec.md").write_text("- [ ] Email the weekly numbers to everyone who asked\n")
+    def test_words_in_another_order_are_the_same_words(self):
+        (self.repo / "docs" / "spec.md").write_text("- [ ] The email digest, weekly\n")
         self.write_table([("Weekly digest email", "Not built", "")])
-        self.assertEqual(len(self.coverage()["without"]), 1)
+        self.assertEqual(self.coverage()["without"], [])
+
+    def test_sharing_some_words_is_a_suggestion_and_closes_no_gap(self):
+        """A guess that closes a gap is worse than the gap: the percent would claim a requirement nobody tied to anything."""
+        (self.repo / "docs" / "spec.md").write_text("- REQ-14: Command line\n- REQ-7: Revenue report each month\n- [ ] Email the weekly numbers to everyone who asked\n")
+        self.write_table([("Create an invoice from the command line", "Live", ""), ("Monthly revenue report", "Not built", ""), ("Weekly digest email", "Not built", "")])
+        found = self.coverage()
+        self.assertEqual(len(found["without"]), 3)
+        near = {i.ident or i.words: i.near.num if i.near is not None else None for i in found["without"]}
+        self.assertEqual(near["REQ-14"], 1)
+        self.assertEqual(near["REQ-7"], 2)
+        self.assertEqual(near["Email the weekly numbers to everyone who asked"], 3)
+
+    def test_the_advice_names_the_near_row_first(self):
+        (self.repo / "docs" / "spec.md").write_text("- REQ-7: Revenue report each month\n")
+        self.write_table([("Monthly revenue report", "Not built", "")])
+        words = requirements.what_to_do(self.coverage()["without"][0])
+        self.assertTrue(words.startswith("row 1 looks like it: gitdone link 1 REQ-7."), words)
+        self.assertIn("If it is not: gitdone add", words)
+
+    def test_the_matrix_shows_the_near_row(self):
+        (self.repo / "docs" / "spec.md").write_text("- REQ-7: Revenue report each month\n")
+        self.write_table([("Monthly revenue report", "Not built", "")])
+        self.assertIn("**no row** (row 1 looks like it)", trace.markdown(self.plan(), offline=True))
 
     def test_it_says_what_has_no_row_and_what_nobody_asked_for(self):
         found = self.coverage()
@@ -264,6 +287,34 @@ class Matrix(RequirementCase):
         self.write_plan(requirements=["docs/spec.md"])
         words = trace.markdown(self.plan(), offline=True)
         self.assertIn("**no row**", words)
+
+    def test_a_link_survives_the_row_going_live(self):
+        from gitdone import edit
+        self.write_plan(requirements=["docs/spec.md"])
+        (self.repo / "docs" / "spec.md").write_text("- REQ-7: Revenue report each month\n")
+        self.write_table([("Monthly revenue report", "Partial", "started")])
+        from gitdone import render
+        plan = self.plan()
+        (self.repo / "STATUS.md").write_text(render.status_md(plan, tables.load_clean(plan)))
+        self.assertIn("answers to REQ-7", edit.link(self.plan(), 1, "REQ-7"))
+        sha = self.commit("the report", {"src/report.py": "1\n"})
+        from gitdone import shipped
+        shipped.ship(self.plan(), 1, f"`{sha[:7]}`", offline=True)
+        plan = self.plan()
+        found = requirements.coverage(plan, tables.load_clean(plan))
+        self.assertEqual(found["without"], [])
+        self.assertIn("1 are fully Live", trace.markdown(self.plan(), offline=True))
+
+    def test_a_link_is_refused_for_what_is_not_an_id(self):
+        from gitdone import edit
+        from gitdone.shipped import Refused
+        for bad in ("req-1", "REQ", "REQ-1; rm", "`REQ-1`"):
+            with self.assertRaises(Refused):
+                edit.link(self.plan(), 1, bad)
+
+    def test_a_link_says_so_when_it_is_already_there(self):
+        from gitdone import edit
+        self.assertIn("already names", edit.link(self.plan(), 1, "REQ-1"))
 
     def test_as_data(self):
         self.live()

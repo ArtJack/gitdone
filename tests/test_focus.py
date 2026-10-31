@@ -132,7 +132,7 @@ class Judging(FocusCase):
                 self.assertEqual(judged["class"], focus.UPKEEP)
 
     def test_a_subject_that_says_upkeep_is_upkeep(self):
-        for message in ("fix: a crash", "chore(deps): bump x", "docs: words", "test: more", "ci: cache", "build: flags", "Revert \"a thing\"", "Bump lodash from 1 to 2"):
+        for message in ("fix: a crash", "chore(deps): bump x", "ci: cache", "build: flags", "Revert \"a thing\"", "Bump lodash from 1 to 2"):
             with self.subTest(message):
                 self.assertEqual(self.judged(message)["class"], focus.UPKEEP)
 
@@ -144,18 +144,18 @@ class Judging(FocusCase):
         self.assertEqual(judged["class"], focus.OFF)
         self.assertEqual(judged["because"], "it names no row and matches none")
 
-    def test_a_subject_with_a_rows_words_is_on_plan_and_says_how_it_knows(self):
+    def test_a_subject_with_a_rows_words_is_unclear_and_says_what_it_looks_like(self):
         judged = self.judged("Search results across all projects")
-        self.assertEqual(judged["class"], focus.ON)
+        self.assertEqual(judged["class"], focus.UNCLEAR)
         self.assertEqual(judged["rows"], [2])
-        self.assertEqual(judged["because"], "its subject shares the row's words")
+        self.assertEqual(judged["because"], "it looks like row 2, by its words")
 
     def test_one_shared_word_is_enough_only_when_the_row_has_one(self):
         self.assertEqual(self.judged("Tidy the search box")["class"], focus.OFF)
         self.assertEqual(self.judged("Export to a file")["rows"], [3])
 
-    def test_a_fix_on_an_open_row_counts_for_the_row(self):
-        self.assertEqual(self.judged("fix: search across projects misses one")["rows"], [2])
+    def test_a_fix_with_an_open_rows_words_is_unclear(self):
+        self.assertEqual(self.judged("fix: search across projects misses one")["class"], focus.UNCLEAR)
 
     def test_the_words_of_a_finished_row_are_polish(self):
         """Billing went Live before this window. A commit on billing now is not advancing anything."""
@@ -171,7 +171,7 @@ class Judging(FocusCase):
         after = self.commit("Export it faster", "2026-02-25", {"src/g.py": "1\n"})
         found = {c["commit"]: c for c in self.data()["list"]}
         self.assertEqual(found[sha[:7]]["class"], focus.ON)
-        self.assertEqual(found[before[:7]]["class"], focus.ON)  # written while the row was open, and landed a little later
+        self.assertEqual(found[before[:7]]["class"], focus.UNCLEAR)  # written while the row was open, and landed a little later
         self.assertEqual(found[after[:7]]["class"], focus.OFF)
 
     def test_a_mixed_commit_is_judged_by_its_work(self):
@@ -239,6 +239,13 @@ class Merges(FocusCase):
         self.assertEqual(found["on_plan"], 2)
         self.assertEqual({tuple(c["rows"]) for c in found["list"] if c["class"] == focus.ON}, {(3,)})
 
+    def test_a_merge_for_a_row_that_had_finished_does_not_make_new_work_on_plan(self):
+        self.branch("row-4-polish", "A large rewrite")
+        self.merge("row-4-polish", "Merge branch 'row-4-polish'")
+        found = self.data()
+        self.assertEqual(found["on_plan"], 0)
+        self.assertEqual(found["unclear"], 1)
+
     def test_a_branch_named_for_a_row_ties_it(self):
         self.branch("row-3-export", "Some work")
         self.merge("row-3-export", "Merge branch 'row-3-export'")
@@ -264,7 +271,7 @@ class Summing(FocusCase):
         found = self.data()
         self.assertEqual((found["commits"], found["on_plan"], found["upkeep"], found["off_plan"]), (6, 2, 1, 3))
         self.assertEqual(found["rows"], [{"row": 1, "commits": 2}])
-        self.assertEqual(found["areas"][0], {"area": "src/logging", "commits": 2})
+        self.assertEqual(found["areas"][0], {"area": "src/logging", "lines": 2})
 
     def test_the_window_is_days(self):
         self.commit("Old thing", "2026-02-01", {"src/old.py": "1\n"})
@@ -281,8 +288,8 @@ class Summing(FocusCase):
     def test_the_words_list_the_commits_that_were_off_plan_and_what_is_next(self):
         self.filled()
         words = focus.text(self.data())
-        self.assertIn("Off plan  3   50%", words)
-        self.assertIn("Refactor the logger (src/logging)", words)
+        self.assertRegex(words, r"Off plan\s+3\s+50%")
+        self.assertIn("Refactor the logger (1 line, src/logging)", words)
         self.assertIn("Next on the plan: row 1", words)
         self.assertIn("gitdone add", words)
 
@@ -301,6 +308,8 @@ class Summing(FocusCase):
 
     def test_a_long_list_is_cut_and_says_how_to_see_it(self):
         for i in range(12):
+            self.commit(f"Unplanned {i}", files={f"tools/{i}.py": "1\n"})
+        for i in range(12, 14):
             self.commit(f"Unplanned {i}", files={f"tools/{i}.py": "1\n"})
         self.assertIn("and 2 more: gitdone focus --all", focus.text(self.data()))
 
@@ -325,7 +334,7 @@ class Summing(FocusCase):
         today = datetime.date.today().isoformat()
         for i, message in enumerate(("row 1: a", "Refactor", "docs: c")):
             self.commit(message, day=today, files={f"src/x{i}.py" if i < 2 else "docs/c.md": "1\n"})
-        self.assertEqual(focus.opener_line(self.plan()), "Focus, last 14 days: 1 of 3 commits on plan, 1 off plan (src/x1.py 1).")
+        self.assertEqual(focus.opener_line(self.plan()), "Focus, last 14 days: 1 of 3 commits on plan, 1 off plan (src/x1.py).")
 
 
 class Next(FocusCase):
@@ -341,7 +350,7 @@ class Next(FocusCase):
         self.assertEqual([r["row"] for r in found["rows"]], [2, 3])
         words = focus.next_text(found)
         self.assertIn("Next: P2 (Core). It needs a key.", words)
-        self.assertIn("change of scope", words)
+        self.assertIn("Work on no row is a change of scope", words)
 
     def test_nothing_open_says_so(self):
         self.rows = {4: ("Billing page", "Live")}

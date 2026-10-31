@@ -227,7 +227,7 @@ def _requirement_notes(plan, table, notes):
         return
     missing = found["without"]
     for item in missing[:MOST_REQUIREMENTS_SAID]:
-        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}) has no row, so the percent leaves it out", [], requirements.what_to_do(item)))
+        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}): no row names it, so the percent may leave it out", [], requirements.what_to_do(item)))
     if len(missing) > MOST_REQUIREMENTS_SAID:
         notes.append(Finding(f"and {len(missing) - MOST_REQUIREMENTS_SAID} more requirements have no row: gitdone matrix", []))
     notes.extend(Finding(render.one_line(words), []) for words in found["problems"])

@@ -34,7 +34,7 @@ date to quote is the one `gitdone eta` prints, with its range and its words: it 
 
 Start from `gitdone next`. Work on those rows, and name the row in the commit message (`row 12`), so that the work traces to it.
 If what you are about to do is on no row, say so before you start it, and let the person decide: if it belongs, `gitdone add` puts it in
-the scope and says what that does to the date. If `gitdone focus` shows work drifting off plan, say that too, in its own numbers.
+the scope and says what that does to the date. If `gitdone focus` shows work drifting off plan, say that too, in its own numbers. A requirement no row names: `gitdone link <row> <id>` if a row holds it, and that is the person's call.
 
 ## Change a row only like this
 

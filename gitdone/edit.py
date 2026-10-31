@@ -13,6 +13,7 @@ from .shipped import Refused, fold_note, read_keeping_newlines, save
 TABLE_HEAD = ["| # | Name | Status | Note |", "|---|---|---|---|"]
 
 
+ID_WORD = re.compile(r"[A-Z][A-Z0-9]{0,9}-\d{1,9}(?:\.\d{1,9})*")
 OLD_ROW_NUMBER = re.compile(r"^\s*\|\s*(\d{1,9})\s*\|[^|\n]*\|\s*[A-Za-z]", re.M)  # a row: its number, its name, and a status in words
 
 
@@ -134,6 +135,25 @@ def remove(plan, row_number):
         del lines[row.line]
     save(plan, text, "\n".join(lines), newline)
     return f"row {row_number} ({row.name}) is out of the scope; `week` will say so"
+
+
+def link(plan, row_number, ident):
+    """Put a requirement's id in a row's note, where a later move keeps it. The status does not change, so this works on a row of any kind."""
+    if not ID_WORD.fullmatch(ident):
+        raise Refused(f"{ident!r} is not a requirement's id; one looks like REQ-12")
+    text, newline, table = _loaded(plan)
+    row = table.rows.get(row_number)
+    if row is None:
+        raise Refused(f"row {row_number} is not in {plan.doc.name}")
+    if row.prose:
+        raise Refused(f"row {row_number} sits in a prose domain; give that domain a table of rows first")
+    if re.search(rf"(?<![A-Za-z0-9-]){re.escape(ident)}(?![0-9A-Za-z-])", f"{row.name} {row.note}"):
+        return f"row {row_number} already names {ident}; nothing changed"
+    note = f"{ident}. {row.note}".strip() if row.note.strip() else ident
+    lines = text.split("\n")
+    lines[row.line] = f"| {row.num} | {row.name} | {row.status} | {note} |"
+    save(plan, text, "\n".join(lines), newline)
+    return f"row {row_number} answers to {ident}"
 
 
 def _branch_words(plan, words, branch, offline):

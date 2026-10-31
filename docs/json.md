@@ -73,24 +73,24 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
   "largest_day_share": 0.31,
   "short_of_live_share": 0.71,
   "last_change": null,
-  "scope": {"added": 5, "removed": 0, "keeps_growing": false, "per_day": 0.179, "if_it_goes_on": null, "never_catches_up": false},
+  "scope": {"added": 5, "removed": 0, "keeps_growing": false, "per_day": 0.179, "never_catches_up": false},
   "live": {"kind": "Live", "left": 12, "moving_days": 3, "pace_per_day": 0.107, "likely": "2026-06-23", "sure": "2026-07-31", "too_far": false},
-  "deadline": {"date": "2026-04-15", "start": "2026-01-12", "days_left": 43, "time_used": 0.54, "needs_per_day": 0.202, "late_by": -1, "late_by_if_sure": 14, "late_by_live": 69},
+  "deadline": {"date": "2026-04-15", "start": "2026-01-12", "days_left": 43, "time_used": 0.54, "needs_per_day": 0.202, "needs_per_day_live": 0.279, "late_by": -1, "late_by_if_sure": 14, "late_by_live": 69},
   "workstreams": [{"id": "S1", "name": "Reading lists and renewals", "left": 0.4, "dates": {"likely": "2026-03-05", "sure": "2026-03-06", "too_far": false}}]
 }
 ```
 
-`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone. `if_it_goes_on`, when the scope keeps growing, is `likely` and `too_far`.
+`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone.
 
 ## `focus --json`
 
-`days`, `since`, `revisions`, `commits`, `on_plan`, `on_plan_by_words`, `upkeep`, `off_plan`, `tracker_only`, `lines` (the same three, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `commits`), `next`, and
-`list`: every commit with `commit`, `date`, `subject`, `class` (`on plan`, `upkeep`, `off plan`, `tracker`), `rows`, `because`, `lines`, `area`.
+`days`, `since`, `revisions`, `commits`, `on_plan`, `unclear`, `upkeep`, `off_plan`, `tracker_only`, `shallow`, `lines` (the same four, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `lines`), `next`, `next_row`, and
+`list`: every commit with `commit`, `date`, `subject`, `class` (`on plan`, `unclear`, `upkeep`, `off plan`, `tracker`), `rows`, `because`, `lines`, `area`.
 
 ## The rest
 
 - **`next --json`:** `workstream` (or null), `rows` (each `row`, `name`, `kind`, `note`), `open_rows`.
-- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, and `summary`.
+- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`, `looks_like`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, and `summary`.
 - **`where --json`:** `plan`, `table`, `view`, `repo`, `default_branch`, `verdict`.
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.

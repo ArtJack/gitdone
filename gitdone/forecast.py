@@ -4,8 +4,8 @@ The pace is what moved existing rows toward done, per calendar day. A day when n
 or taken out is scope and not pace: it changes what is left, and so the date, which is the point of having one. The range comes from the
 pace's own spread by a closed form, so the same history on the same day gives the same words, and no random number is involved.
 
-Two lines are drawn, because a weight is a claim too: one through everything the weights credit, and one through what reached the strict
-kind, which is the only movement git has held to anything.
+Two lines are drawn, as the percent has strict and weighted: one through rows reaching the strict kind, which git holds to a commit on the default branch,
+and one through everything the weights credit.
 
 Nothing here reaches the view: it changes with the day, and the gate compares the view byte for byte.
 """
@@ -210,13 +210,15 @@ def _deadline(plan, found, born, today):
     began = min(datetime.date.fromisoformat(plan.start or born or today.isoformat()), day)
     whole = (day - began).days
     days_left = (day - today).days
-    out = {"date": plan.deadline, "start": began.isoformat(), "days_left": days_left, "time_used": 1.0 if whole <= 0 else min(max((today - began).days / whole, 0.0), 1.0),
-           "needs_per_day": round(found["left"] / days_left, 3) if days_left > 0 and found["left"] else None, "late_by": None, "late_by_if_sure": None, "late_by_live": None}
+
+    def needs(left):
+        return round(left / days_left, 3) if days_left > 0 and left else None
 
     def late(iso):
         return (datetime.date.fromisoformat(iso) - day).days if iso else None
-    out["late_by"], out["late_by_if_sure"], out["late_by_live"] = late(found["likely"]), late(found["sure"]), late(found["live"]["likely"])
-    return out
+    return {"date": plan.deadline, "start": began.isoformat(), "days_left": days_left, "time_used": 1.0 if whole <= 0 else min(max((today - began).days / whole, 0.0), 1.0),
+            "needs_per_day": needs(found["left"]), "needs_per_day_live": needs(found["live"]["left"]), "late_by": late(found["likely"]), "late_by_if_sure": late(found["sure"]),
+            "late_by_live": late(found["live"]["likely"])}
 
 
 def _live_line(plan, rows, pace, today):
@@ -244,7 +246,7 @@ def data(plan, group=None, days=WINDOW, today=None):
     out = {"state": "too_little", "as_of": today.isoformat(), "rows": len(rows), "left": _left(plan, rows),
            "strict": top / len(rows) if rows else 0.0, "weighted": tables.score(rows, plan.weights), "window_days": days, "moving_days": 0,
            "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "short_of_live_share": 0.0, "last_change": None,
-           "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "if_it_goes_on": None, "never_catches_up": False},
+           "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "never_catches_up": False},
            "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": []}
     root, rel = _where(plan)
     shallow = _is_shallow(root)
@@ -265,10 +267,8 @@ def data(plan, group=None, days=WINDOW, today=None):
     elif series:
         out.update(state="dated", **_dates(out["left"], series, today))
         if pace.keeps_growing():
-            grown = _dates(out["left"], pace.net(), today)
             out["scope"]["keeps_growing"] = True
-            out["scope"]["if_it_goes_on"] = {"likely": grown["likely"], "too_far": grown["too_far"]} if grown else None
-            out["scope"]["never_catches_up"] = grown is None
+            out["scope"]["never_catches_up"] = sum(pace.net()) <= 1e-9
     elif pace is not None and (pace.moving_days() >= ENOUGH or (pace.days >= days and not pace.moving_days())):
         out["state"] = "stalled"
     if out["state"] == "stalled":
@@ -311,31 +311,39 @@ def _late_words(late):
     return f"{_plural(late, 'day')} late" if late > 0 else (f"{_plural(-late, 'day')} early" if late < 0 else "on the day")
 
 
-def _deadline_words(found):
+def _kind(found):
+    return render.one_line(found["live"]["kind"])
+
+
+def _deadline_words(found, short=False):
     d = found["deadline"]
     when = _day_words(d["date"], found["as_of"])
     if d["days_left"] < 0 and found["left"]:
         return f"Deadline {when}: passed {_plural(-d['days_left'], 'day')} ago, with {_rows_words(found['left'])} rows left."
     if not found["left"]:
         return f"Deadline {when}: nothing left."
-    if found["likely"]:
+    kind = _kind(found)
+    if d["late_by_live"] is not None and d["late_by"] is not None and d["late_by_live"] != d["late_by"]:
+        said = f"{_late_words(d['late_by_live'])} on {kind} rows alone, {_late_words(d['late_by'])} with all work"
+    elif d["late_by"] is not None:
         said = f"likely {_late_words(d['late_by'])}"
-        if d["late_by_live"] is not None and d["late_by_live"] != d["late_by"]:
-            said += f", or {_late_words(d['late_by_live'])} counting only {render.one_line(found['live']['kind'])} rows"
     else:
         said = f"{_plural(d['days_left'], 'day')} left"
-    needs = ""
-    if d["needs_per_day"]:
-        needs = f" It needs {_pace_words(d['needs_per_day'])} rows a day from here" + (f"; the pace is {_pace_words(found['pace_per_day'])}." if found["moving_days"] else ".")
-    return f"Deadline {when}: {said}.{needs}"
+    if short or not d["needs_per_day"]:
+        return f"Deadline {when}: {said}."
+    live = f"{_pace_words(d['needs_per_day_live'])} {kind} rows a day, or " if d["needs_per_day_live"] and d["needs_per_day_live"] != d["needs_per_day"] else ""
+    return f"Deadline {when}: {said}. It needs {live}{_pace_words(d['needs_per_day'])} of all work from here."
 
 
-def _no_date_words(found):
-    days = found["window_days"]
-    if found["moving_days"]:
-        return f"No date: rows moved on {found['moving_days']} of the last {_plural(days, 'day')}, and went back as far as they came."
-    since = f" The table last changed {found['last_change']}." if found["last_change"] else ""
-    return f"No date: nothing moved a row in the last {_plural(days, 'day')}.{since}"
+def _both_dates(found):
+    """The two answers side by side, each labelled, as the percent gives strict and weighted."""
+    kind = _kind(found)
+    live, likely = found["live"]["likely"], found["likely"]
+    if live and live != likely:
+        return f"{_day_words(live, found['as_of'])} on {kind} rows alone, or {_day_words(likely, found['as_of'])} with all work"
+    if live:
+        return _day_words(likely, found["as_of"])
+    return f"{_day_words(likely, found['as_of'])} with all work, and {kind} rows alone give no date yet"
 
 
 def headline(found):
@@ -344,36 +352,59 @@ def headline(found):
     if state == "dated":
         if found["too_far"]:
             return f"At the pace of the last {_plural(days, 'day')}, this is more than ten years away. That is a line, not a promise."
-        likely = _day_words(found["likely"], found["as_of"])
         condition = " if the scope stops growing" if found["scope"]["keeps_growing"] else ""
-        sure = f"85% sure by {_day_words(found['sure'], found['as_of'])}" if found["sure"] else "and the 85% date is more than ten years away"
-        return f"Likely done {likely}{condition}, {sure}: a line through the last {_plural(days, 'day')}, not a promise."
+        return f"Likely done {_both_dates(found)}{condition}: a line through the last {_plural(days, 'day')}, not a promise."
     if state == "done":
         rows, strict = found["rows"], found["strict"]
         if strict >= 1:
             return "Nothing left: every row is done."
-        return f"Nothing left by the plan's weights, though {_plural(rows - round(strict * rows), 'row')} short of {render.one_line(found['live']['kind'])}."
+        return f"Nothing left by the plan's weights, though {_plural(rows - round(strict * rows), 'row')} short of {_kind(found)}."
     if state == "no_rows":
         return "No date: the table has no rows."
     if state == "shallow":
         return "No date: this clone is shallow, so the table's history is cut off. `git fetch --unshallow` brings it back."
     if state == "stalled":
-        return _no_date_words(found)
+        if found["moving_days"]:
+            return f"No date: rows moved on {found['moving_days']} of the last {_plural(days, 'day')}, and went back as far as they came."
+        since = f" The table last changed {found['last_change']}." if found["last_change"] else ""
+        return f"No date: nothing moved a row in the last {_plural(days, 'day')}.{since}"
     return f"No date yet: rows moved on {found['moving_days']} of the last {_plural(days, 'day')}, and a line needs {ENOUGH}."
 
 
-def _live_words(found):
-    """The date a reviewer would stand behind, beside the one the weights give."""
+def _no_live_date(found):
     live = found["live"]
-    kind = render.one_line(live["kind"])
-    if not live["left"]:
-        return None
-    if live["likely"]:
-        sure = f", 85% sure by {_day_words(live['sure'], found['as_of'])}" if live["sure"] else ""
-        return f"Counting only {kind} rows: likely {_day_words(live['likely'], found['as_of'])}{sure}."
     if live["too_far"]:
-        return f"Counting only {kind} rows: more than ten years away."
-    return f"Counting only {kind} rows: no date, with {_plural(live['moving_days'], 'day')} of movement in that time."
+        return "more than ten years away"
+    days = found["window_days"]
+    if live["moving_days"] >= ENOUGH:
+        return f"no date: they went back as far as they came in the last {_plural(days, 'day')}"
+    return f"no date: they moved on {live['moving_days']} of the last {_plural(days, 'day')}, and a line needs {ENOUGH}"
+
+
+def _date_table(found):
+    """What the headline rests on: for each line, its dates, what it has left, and how fast it moves, so that each can be checked by hand."""
+    def day(iso):
+        return _day_words(iso, found["as_of"]) if iso else "past ten years"
+    live, kind = found["live"], _kind(found)
+    same = live["likely"] == found["likely"] and live["sure"] == found["sure"] and live["left"] == found["left"]
+    rows = []
+    if live["left"]:
+        if live["likely"]:
+            rows.append((f"{kind} alone" if not same else f"{kind} rows", day(live["likely"]), day(live["sure"]), f"{_rows_words(live['left'])} rows", _pace_words(live["pace_per_day"])))
+        else:
+            rows.append((f"{kind} alone", _no_live_date(found), None, None, None))
+    if not same:
+        rows.append(("All work", day(found["likely"]), day(found["sure"]), f"{_rows_words(found['left'])} rows", _pace_words(found["pace_per_day"])))
+    full = [r for r in rows if r[2] is not None]
+    widths = [max([len(r[i]) for r in full] + [len(head)]) for i, head in enumerate(("", "Likely", "85% sure", "Left", "A day"))] if full else [0] * 5
+    widths[0] = max(len(r[0]) for r in rows)
+    L = ["  " + "  ".join(head.ljust(width) for head, width in zip(("", "Likely", "85% sure", "Left", "A day"), widths)).rstrip()]
+    for r in rows:
+        if r[2] is None:
+            L.append(f"  {r[0].ljust(widths[0])}  {r[1]}")
+        else:
+            L.append("  " + "  ".join(cell.ljust(width) for cell, width in zip(r, widths)).rstrip())
+    return L
 
 
 def _scope_words(found):
@@ -384,10 +415,7 @@ def _scope_words(found):
     if scope["keeps_growing"]:
         words = (f"Scope: {scope['added']} rows added, {scope['removed']} taken out in that time, or {_pace_words(scope['per_day'])} rows a day "
                  f"against {_pace_words(found['pace_per_day'])} of work.")
-        if scope["never_catches_up"]:
-            words += " If it goes on like that, the work never catches up."
-        elif scope["if_it_goes_on"] and scope["if_it_goes_on"]["likely"]:
-            words += f" If it goes on like that: likely {_day_words(scope['if_it_goes_on']['likely'], found['as_of'])}."
+        words += " If it goes on like that, the work never catches up." if scope["never_catches_up"] else " The dates assume it stops."
     return words
 
 
@@ -396,47 +424,43 @@ def opener_line(plan, today=None):
     found = data(plan, today=today)
     parts = []
     if found["state"] == "dated" and not found["too_far"]:
-        condition = " if the scope stops growing" if found["scope"]["keeps_growing"] else ""
-        sure = f" (85%: {_day_words(found['sure'], found['as_of'])})" if found["sure"] else ""
-        parts.append(f"Likely done {_day_words(found['likely'], found['as_of'])}{sure}{condition}, at the last {_plural(found['window_days'], 'day')}' pace.")
-        if found["short_of_live_share"] > 0.5 and found["live"]["left"]:
-            parts.append(_live_words(found))
+        parts.append(f"Likely done {_both_dates(found)}, at the last {_plural(found['window_days'], 'day')}' pace.")
     elif found["state"] in ("dated", "stalled", "shallow"):
         parts.append(headline(found))
     if found["scope"]["never_catches_up"]:
         parts.append("Scope is growing as fast as the work.")
     elif found["scope"]["keeps_growing"]:
-        parts.append(f"Scope takes {_pace_words(found['scope']['per_day'])} rows a day of the {_pace_words(found['pace_per_day'])} the work moves.")
+        parts.append(f"Scope takes {_pace_words(found['scope']['per_day'])} rows a day of the {_pace_words(found['pace_per_day'])} the work moves, and that date assumes it stops.")
     if found["deadline"]:
-        parts.append(_deadline_words(found))
+        parts.append(_deadline_words(found, short=True))
     return " ".join(parts) or None
 
 
 def text(found):
     L = [headline(found)]
-    if found["state"] == "dated":
-        live = _live_words(found)
-        if live:
-            L.append(live)
+    if found["state"] == "dated" and not found["too_far"]:
+        L += [""] + _date_table(found) + [""]
     if found["rows"]:
-        L.append(f"Left: {_rows_words(found['left'])} of {found['rows']} rows (weighted {render.pct(found['weighted'])}, strict {render.pct(found['strict'])}).")
-    if found["state"] not in ("shallow",) and found["moving_days"]:
-        words = f"Pace: {_pace_words(found['pace_per_day'])} rows a day; rows moved on {found['moving_days']} of {_plural(found['window_days'], 'day')}."
-        if found["short_of_live_share"] > 0.5 and found["state"] == "dated":
-            words += f" {render.pct(found['short_of_live_share'])} of that stopped short of {render.one_line(found['live']['kind'])}, which only a note holds up."
+        L.append(f"Scope now: {_plural(found['rows'], 'row')}, strict {render.pct(found['strict'])}, weighted {render.pct(found['weighted'])}.")
+    if found["state"] != "shallow" and found["moving_days"]:
+        words = f"Rows moved on {found['moving_days']} of {_plural(found['window_days'], 'day')}."
+        if found["state"] == "dated":
+            if found["short_of_live_share"] > 0:
+                words += f" {render.pct(found['short_of_live_share'])} of that stopped short of {_kind(found)}."
+            if found["largest_day_share"] > 0.5:
+                words += f" One day made {render.pct(found['largest_day_share'])} of it, so read the dates loosely."
         L.append(words)
-    if found["state"] == "dated" and found["largest_day_share"] > 0.5:
-        L.append(f"One day made {render.pct(found['largest_day_share'])} of that, so read the date loosely.")
     scope = _scope_words(found)
     if scope:
         L.append(scope)
     d = found["deadline"]
     if d:
         L.append(_deadline_words(found))
+        L.append(f"  {_kind(found)[:4]:<4} {render.bar(found['strict'])} {render.pct(found['strict'])}")
         L.append(f"  Work {render.bar(found['weighted'])} {render.pct(found['weighted'])}")
         L.append(f"  Time {render.bar(d['time_used'])} {render.pct(d['time_used'])}, {_day_words(d['start'], found['as_of'])} to {_day_words(d['date'], found['as_of'])}")
     if any(w["left"] for w in found["workstreams"]):
-        L += ["", "In the plan's order:"]
+        L += ["", "In the plan's order, with all work:"]
         names = [render.one_line(f"{w['id'] or ''} {w['name']}") for w in found["workstreams"]]
         width = max(len(name) for name in names)
         for name, w in zip(names, found["workstreams"]):
@@ -453,28 +477,39 @@ def text(found):
 
 
 def left_now(plan):
+    """(what is left with all work, what is left on the strict kind alone)."""
     table = tables.load_clean(plan)
-    return _left(plan, [r for d in table.domains for r in d.rows])
+    rows = [r for d in table.domains for r in d.rows]
+    return _left(plan, rows), sum(1 for r in rows if r.kind != plan.strict_kind.name)
 
 
-def _moved_words(before, after, series, today):
-    """What a change in what is left does to the likely date; None if there is no date for it to move."""
+def _shift(before, after, series, today):
+    """(from, to, days) of the likely date when what is left changes, or None if there is no date for it to move."""
     then, now = _dates(max(before, 0.0), series, today), _dates(max(after, 0.0), series, today)
     if not then or not now or not then["likely"] or not now["likely"]:
         return None
-    change = (datetime.date.fromisoformat(now["likely"]) - datetime.date.fromisoformat(then["likely"])).days
-    if not change:
-        return "The likely date stays " + _day_words(now["likely"], today.isoformat()) + "."
-    return f"That moves the likely date from {_day_words(then['likely'], today.isoformat())} to {_day_words(now['likely'], today.isoformat())} ({change:+d} days)."
+    return then["likely"], now["likely"], (datetime.date.fromisoformat(now["likely"]) - datetime.date.fromisoformat(then["likely"])).days
+
+
+def _moved_words(before, after, pace, today, kind):
+    """What a change in what is left does to the likely dates; None if there is no date for it to move."""
+    def said(shift):
+        return f"{shift[2]:+d} days, {_day_words(shift[0], today.isoformat())} to {_day_words(shift[1], today.isoformat())}"
+    work = _shift(before[0], after[0], pace.moved, today) if pace.moving_days() >= ENOUGH and pace.per_day() > 1e-9 else None
+    live = _shift(before[1], after[1], pace.live, today) if pace.live_days() >= ENOUGH and sum(pace.live) > 0 else None
+    if not work and not live:
+        return None
+    parts = ([f"on {render.one_line(kind)} rows alone, {said(live)}"] if live else []) + ([f"with all work, {said(work)}"] if work else [])
+    return "That moves the likely date " + ", and ".join(parts) + "."
 
 
 def shift_words(plan, before, today=None):
     """What `add` or `remove` just did to the date. The pace comes from what is committed, so it is the same before and after."""
     today = today or datetime.date.today()
     pace = read_pace(plan, today=today)
-    if pace is None or pace.moving_days() < ENOUGH:
+    if pace is None:
         return None
-    return _moved_words(before, left_now(plan), pace.moved, today)
+    return _moved_words(before, left_now(plan), pace, today, plan.strict_kind.name)
 
 
 def against(plan, base, today=None):
@@ -494,7 +529,10 @@ def against(plan, base, today=None):
         return None
     pace = read_pace(plan, today=today)
     moved = None
-    if pace is not None and pace.moving_days() >= ENOUGH:
-        weights = plan.weights
-        moved = _moved_words(sum(1 - weights.get(k, 0.0) for k in before.values()), sum(1 - weights.get(k, 0.0) for k in now.values()), pace.moved, today)
+    if pace is not None:
+        weights, strict = plan.weights, plan.strict_kind.name
+
+        def left(kinds):
+            return sum(1 - weights.get(k, 0.0) for k in kinds.values()), sum(k != strict for k in kinds.values())
+        moved = _moved_words(left(before), left(now), pace, today, strict)
     return {"added": added, "removed": removed, "date_moved": moved}

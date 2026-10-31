@@ -34,16 +34,16 @@ TIMELINE = [
 
 # (date, subject, file): the work between those dates, so that `focus` has something to read. Some of it names a row, and some of it is drift.
 WORK = [
-    ("2026-02-11", "row 2: availability from the catalogue feed", "kiosk/availability.py"),
-    ("2026-02-18", "Rewrite the receipt printer driver", "printer/driver.py"),
-    ("2026-02-19", "row 3: import a reading list from a CSV file", "kiosk/lists.py"),
-    ("2026-02-21", "Try a new theme engine for the kiosk", "theme/engine.py"),
-    ("2026-02-23", "row 7: renew from the receipt's code", "kiosk/renew.py"),
-    ("2026-02-24", "docs: how to run a kiosk at a branch", "docs/running.md"),
-    ("2026-02-25", "Rewrite the receipt printer driver again", "printer/driver.py"),
-    ("2026-02-26", "row 10: staff sign in", "kiosk/staff.py"),
-    ("2026-02-28", "fix: the scanner drops the last digit", "kiosk/scan.py"),
-    ("2026-03-01", "row 9: card sign-in reaches the branches", "kiosk/signin.py"),
+    ("2026-02-11", "row 2: availability from the catalogue feed", "kiosk/availability.py", 90),
+    ("2026-02-18", "Rewrite the receipt printer driver", "printer/driver.py", 340),
+    ("2026-02-19", "row 3: import a reading list from a CSV file", "kiosk/lists.py", 120),
+    ("2026-02-21", "Try a new theme engine for the kiosk", "theme/engine.py", 410),
+    ("2026-02-23", "row 7: renew from the receipt's code", "kiosk/renew.py", 75),
+    ("2026-02-24", "docs: how to run a kiosk at a branch", "docs/running.md", 30),
+    ("2026-02-25", "Rewrite the receipt printer driver again", "printer/driver.py", 280),
+    ("2026-02-26", "row 10: staff sign in", "kiosk/staff.py", 60),
+    ("2026-02-28", "fix: the scanner drops the last digit", "kiosk/scan.py", 4),
+    ("2026-03-01", "row 9: card sign-in reaches the branches", "kiosk/signin.py", 110),
 ]
 
 
@@ -90,10 +90,10 @@ def main(argv=None):
     work = list(WORK)
     for number, (date, change) in enumerate(TIMELINE, 1):
         while work and work[0][0] <= date:
-            day, subject, name = work.pop(0)
+            day, subject, name, size = work.pop(0)
             (repo / name).parent.mkdir(parents=True, exist_ok=True)
             with open(repo / name, "a", encoding="utf-8") as handle:
-                handle.write(f"{subject}\n")
+                handle.write("".join(f"{subject}, {line}\n" for line in range(size)))
             git(repo, "add", name)
             git(repo, "commit", "-q", "--no-verify", "-m", subject, date=day)
         (repo / "kiosk.txt").write_text(f"kiosk code, step {number}\n", encoding="utf-8")

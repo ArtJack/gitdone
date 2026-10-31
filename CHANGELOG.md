@@ -4,23 +4,22 @@
 
 The percent said how much. This says when, and where the time went.
 
-**`eta`: when.** A line through the table's own git history, with a range, and the words say it is a line. A second line goes through Live rows alone, because a weight is a claim too: one commit can mark seven rows Partial, and the weighted date jumps while that one
-stays. A row added or dropped moves the date, and `add` and `remove` say by how many days, so a feature's cost is on the table when someone decides to take it. When scope keeps growing, the headline says the date assumes it stops, `eta` gives the two rates, and if
-it grows as fast as the work, it says the work never catches up. With too little history it gives no date. `chart --burndown` draws it: what is left, up when the scope grew, with the line, the range and the deadline.
+**`eta`: when.** A line through the table's own git history, with a range, and the words say it is a line. Two lines, as the percent has strict and weighted: one on Live rows alone, and one with all work, because one commit can mark seven rows Partial and the
+weighted date jumps. A row added or dropped moves the date, and `add` and `remove` say by how many days, so a feature's cost is on the table when someone decides to take it. When scope keeps growing, the headline says the date assumes it stops, `eta` gives the two rates, and
+if it grows as fast as the work, it says the work never catches up. With too little history it gives no date. `chart --burndown` draws it: what is left on both lines, up when the scope grew, with the dates, the range and the deadline.
 
-**A deadline.** `"deadline"` in the plan. `eta` says how late, how much pace it needs, and burns time against work on two bars. The view states it, and moving it is said out loud.
+**A deadline.** `"deadline"` in the plan. `eta` says how late on each line, what pace each needs, and burns time against work on bars. The view states it, and moving it is said out loud.
 
-**`focus`: where the commits went.** On plan, upkeep or off plan, with the reason for each: the message names the row, a row cites the commit, it moved the row, the plan ties its files to the row, or its
-subject shares the row's words. A signal that cannot stop anything. `next` lists the rows to work on now. `install-hook` adds a `post-commit` hook that says one line after a commit that was off plan.
-The opener, `week` and the Action say the numbers, and the agent rules now say: work on what `next` lists, name the row, and say so before doing anything else.
+**`focus`: where the commits went.** On plan means someone said so: the message names the row, a row cites the commit, it moved the row, a merge is tied to the row, or the plan ties its files to the row. What only looks like a row is unclear, and it is listed with what is off plan, with its lines, because a guess must not close a gap.
+A signal that cannot stop anything. `next` lists the rows to work on now. `install-hook` adds a `post-commit` hook that says one line after a commit that was off plan. The opener, `week` and the Action say the numbers, and the agent rules now say: work on what `next` lists, name the row, and say so before starting work on no row.
 
-**`matrix`: traceability nobody keeps by hand.** `"requirements"` names your spec and your roadmap, and `init --from-checklist` names its file for you. Each requirement goes to its row, by id or by its words, and to its evidence and tests, read from git each time. Two gaps are named:
-a requirement with no row, which the opener, `check` and the Action say on every run, and a row nobody asked for. A test listed exists; whether it passes is your CI's word.
-
-**Then an independent attack reproduced 42 defects in the first cut of this layer, and a cold reader found what its first hour taught, and each now has a test.** A long line in a spec could hang the gate; a suggested command could run what a hostile spec put in it. `eta` chose its commits
-by the committer's date, so a rebase moved the date and one old commit hid the rest: it now reads what the history keeps. A future clock, a broken commit, a renamed or copied table, a shallow clone and a tracker beside another all told it something false, and no longer do. A row's number is no longer given out again.
+**`matrix`: traceability read from git.** `"requirements"` names your spec and your roadmap, and `init --from-checklist` takes a spec of `REQ-12: words` lines and names it for you. A row holds a requirement if it names its id or says the same words; anything weaker is a suggestion, and `link` writes the id where later moves keep it. Each requirement goes to its evidence and tests. Two gaps are named:
+a requirement no row names, which the opener, `check` and the Action say on every run, and a row nobody asked for. A test listed exists; whether it passes is your CI's word.
 
 **Where others work.** The Action's comment says what a pull request does to the scope and the date, and it publishes `burndown.svg`. `portfolio` has a likely date per project. The MCP server has `eta`, `focus`, `next` and `matrix`.
+
+**An independent attack reproduced 42 defects in the first cut of this layer, and two cold reads found what a stranger's first hour taught, and each now has a test.** A long line in a spec could hang the gate; a suggested command could run what a hostile spec put in it. `eta` chose its commits
+by the committer's date, so a rebase moved the date and one old commit hid the rest: it now reads what the history keeps. A future clock, a broken commit, a renamed or copied table, a shallow clone and a tracker beside another all told it something false, and no longer do. A row's number is no longer given out again.
 
 **Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. The burn-up and the view carry no forecast.
 

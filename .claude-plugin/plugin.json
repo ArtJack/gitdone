@@ -1,6 +1,6 @@
 {
   "name": "gitdone",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A percent done you can defend: strict and weighted completion from one plan file and one status table, each claim held to git. /status prints where a project stands, moves a row to Live on evidence, and prints the weekly delta.",
   "author": {
     "name": "ArtJack",

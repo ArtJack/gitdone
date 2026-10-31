@@ -222,18 +222,20 @@ def burndown(items, title, found, words):
     if not items:
         raise PlanError("the table has no history to chart")
     today = _day(found["as_of"])
-    points = [{"date": p["date"], "left": round(p["scope"] - p["weighted"], 3), "scope": p["scope"]} for p in items]
+    points = [{"date": p["date"], "left": round(p["scope"] - p["weighted"], 3), "left_live": p["scope"] - p["strict"], "scope": p["scope"]} for p in items]
     if _day(points[-1]["date"]) < today:
-        points.append({"date": found["as_of"], "left": points[-1]["left"], "scope": points[-1]["scope"]})
+        points.append({**points[-1], "date": found["as_of"]})
     first = _day(points[0]["date"])
     plot_w, plot_h = WIDTH - LEFT - BURNDOWN_RIGHT, HEIGHT - TOP - BOTTOM
     likely = _day(found["likely"]) if found.get("likely") else None
     sure = _day(found["sure"]) if found.get("sure") else (likely and likely + datetime.timedelta(days=3650))  # past ten years: as far as this axis could care
     deadline = _day(found["deadline"]["date"]) if found.get("deadline") else None
+    live = found.get("live") or {}
+    live_likely = _day(live["likely"]) if live.get("likely") else None
     horizon = today + datetime.timedelta(days=max((today - first).days * HORIZON_FACTOR, HORIZON_DAYS))
-    edge = max([today] + [min(day, horizon) for day in (likely, sure, deadline) if day])
+    edge = max([today] + [min(day, horizon) for day in (likely, sure, deadline, live_likely) if day])
     span = (edge - first).days
-    ticks = _y_ticks(max(math.ceil(max(p["left"] for p in points)), 1))
+    ticks = _y_ticks(max(math.ceil(max(p["left_live"] for p in points)), 1))
     y_top = ticks[-1] or 1
 
     def x_of_day(day):
@@ -248,7 +250,7 @@ def burndown(items, title, found, words):
     left_now = found["left"]
     needed = bool(deadline and today < deadline <= edge and left_now)
     scope_words = "A step up is scope, marked with its size, or a row going back. Either moves the date." + (" Dotted: what the deadline needs." if needed else "")
-    subtitle = "Rows left over time, from the status table's git history."
+    subtitle = "Rows left, in blue on Live rows alone, in orange with all work, from the table's git history."
     if likely:
         subtitle += f" Dashed: a line through the last {found['window_days']} days, not a promise."
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" height="{HEIGHT}" role="img" aria-labelledby="t d">',
@@ -280,24 +282,32 @@ def burndown(items, title, found, words):
         shape = [origin, (x_of_day(likely_day), y(likely_left))] + corner + [(x_of_day(sure_day), y(sure_left))]
         out.append('<path d="M' + "L".join(f"{a:.1f} {b:.1f}" for a, b in shape) + 'Z" fill="var(--weighted)" fill-opacity=".14"/>')
         out.append(f'<line class="line" x1="{origin[0]:.1f}" y1="{origin[1]:.1f}" x2="{x_of_day(likely_day):.1f}" y2="{y(likely_left):.1f}" stroke="var(--weighted)" stroke-dasharray="6 5"/>')
+    left_live = live.get("left", points[-1]["left_live"])
+    live_origin = (x_of_day(today), y(left_live))
+    if live_likely:
+        end_day, end_left = _toward(today, left_live, live_likely, edge)
+        out.append(f'<line class="line" x1="{live_origin[0]:.1f}" y1="{live_origin[1]:.1f}" x2="{x_of_day(end_day):.1f}" y2="{y(end_left):.1f}" stroke="var(--strict)" stroke-dasharray="6 5"/>')
+    out.append(f'<path class="line" d="{_steps(points, x, y, "left_live")}" stroke="var(--strict)"/>')
     out.append(f'<path class="line" d="{_steps(points, x, y, "left")}" stroke="var(--weighted)"/>')
     out.extend(_scope_marks(points, x, y))
+    out.append(f'<circle class="dot" cx="{live_origin[0]:.1f}" cy="{live_origin[1]:.1f}" r="5" fill="var(--strict)"/>')
     out.append(f'<circle class="dot" cx="{origin[0]:.1f}" cy="{origin[1]:.1f}" r="5" fill="var(--weighted)"/>')
     label_x = LEFT + plot_w + 14
     label_y = TOP + 4
-    said = [(f"{left_now:g}", "rows left")]
+    kind = escape(" ".join(str(live.get("kind", "Live")).split()))
+    said = [(f"{left_now:g}", "rows left, all work")]
     if likely:
         said.append((_date_words(likely, likely.year != today.year), "likely"))
         if found.get("sure"):
             said.append((_date_words(sure, sure.year != today.year), "85% sure"))
-    live = (found.get("live") or {}).get("likely")
-    if live:
-        said.append((_date_words(_day(live), _day(live).year != today.year), "Live rows alone"))
-    if deadline:
-        said.append((_date_words(deadline, deadline.year != today.year), "deadline"))
+    said.append((f"{left_live:g}", f"rows left, {kind} alone"))
+    if live_likely:
+        said.append((_date_words(live_likely, live_likely.year != today.year), "likely"))
     for value, name in said:
         out.append(f'<text x="{label_x}" y="{label_y:.1f}"><tspan class="value">{escape(value)}</tspan> {name}</text>')
         label_y += LABEL_GAP + 3
+    if deadline:
+        out.append(f'<text x="{label_x}" y="{label_y:.1f}"><tspan class="value">{escape(_date_words(deadline, deadline.year != today.year))}</tspan> deadline</text>')
     stride = max(1, len(points) // HOVER_LIMIT)
     shown = points[::stride]
     for i, item in enumerate(shown):
