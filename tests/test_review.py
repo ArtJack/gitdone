@@ -1348,6 +1348,7 @@ class InitHoldsCheckedItemsToGit(Small):
         self.assertEqual(code, 0, out)
         self.assertTrue((self.repo / ".github" / "workflows" / "status.yml").exists())
         self.assertNotIn("install-ci", out, "no need to suggest what was just done")
+        self.assertIn(".github", [line for line in out.splitlines() if "git add" in line][0])  # or the first commit leaves the gate behind
 
 
 class WhatChangedInTheRulesIsShort(unittest.TestCase):
