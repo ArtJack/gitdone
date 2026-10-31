@@ -62,6 +62,14 @@ def commit(repo, name, text, message="change", env=None):
     return git(repo, "rev-parse", "HEAD")
 
 
+def delete_tree(path):
+    """Everything under a folder, including what git keeps read-only, which Windows will not delete as it stands."""
+    def again(remove, name, _):
+        os.chmod(name, stat.S_IWRITE)
+        remove(name)
+    shutil.rmtree(path, onerror=again)
+
+
 def not_on_windows(case, why):
     if os.name == "nt":
         case.skipTest(why)
