@@ -27,6 +27,8 @@ def demo():
 class TheDemo(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if os.name == "nt":
+            raise unittest.SkipTest("the README shows a session on a shell with forward slashes")
         with tempfile.TemporaryDirectory() as folder:
             cls.lines = demo().transcript(folder)
 
@@ -55,6 +57,15 @@ class TheDemo(unittest.TestCase):
         words = " ".join(t for k, t in self.lines if k == "out")
         for expected in ("refused, nothing changed", "is on main", "is not on main", "was reverted on main by"):
             self.assertIn(expected, words)
+
+
+class TheEngineNamesItsEncoding(unittest.TestCase):
+    def test_every_file_it_opens(self):
+        """A default encoding is whatever the machine says, and on Windows that cannot hold a progress bar."""
+        for path in sorted((ROOT / "gitdone").glob("*.py")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
+                if re.search(r"(?<![.\w])open\(|\.read_text\(|\.write_text\(", line):
+                    self.assertIn("encoding=", line, f"{path.name}:{number}")
 
 
 class Commands(unittest.TestCase):
