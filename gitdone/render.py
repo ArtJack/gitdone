@@ -239,6 +239,8 @@ def status_md(plan, table, today=None):
     L.append(head)
     L.append(">")
     L.append(f"> **Scale.** {_scale_words(plan)}")
+    if plan.deadline:
+        L += [">", f"> **Deadline.** {plan.deadline}. Run `gitdone eta` for where the work stands against it."]
     L.append("")
     for section in plan.sections:
         _SECTIONS[section["type"]](L, plan, table, section)

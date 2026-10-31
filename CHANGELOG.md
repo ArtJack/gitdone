@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+The percent said how much. This says when, and where the time went.
+
+**`eta`: when.** A line through the table's own git history, with a range, and the words say it is a line. A row added or dropped moves the date, and `add` and `remove` say by how many days, so a
+feature's cost is on the table when someone decides to take it. Scope that keeps growing is extrapolated too, and if it grows as fast as the work, `eta` says the work never catches up. With too little
+history it gives no date. `chart --burndown` draws it: what is left, up when the scope grew, with the line, the range and the deadline.
+
+**A deadline.** `"deadline"` in the plan. `eta` says how late, how much pace it needs, and burns time against work on two bars. The view states it, and moving it is said out loud.
+
+**`focus`: where the commits went.** On plan, upkeep or off plan, with the reason for each: the message names the row, a row cites the commit, it moved the row, the plan ties its files to the row, or its
+subject shares the row's words. A signal that cannot stop anything. `next` lists the rows to work on now. `install-hook` adds a `post-commit` hook that says one line after a commit that was off plan.
+The opener, `week` and the Action say the numbers, and the agent rules now say: work on what `next` lists, name the row, and say so before doing anything else.
+
+**`matrix`: traceability nobody keeps by hand.** `"requirements"` names your spec and your roadmap. Each requirement goes to its row, evidence and tests, read from git each time, and two gaps are named:
+a requirement with no row, which the opener, `check` and the Action say on every run, and a row nobody asked for. A test listed exists; whether it passes is your CI's word.
+
+**Where others work.** The Action's comment says what a pull request does to the scope and the date, and it publishes `burndown.svg`. `portfolio` has a likely date per project. The MCP server has `eta`, `focus`, `next` and `matrix`.
+
+**Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. The burn-up and the view carry no forecast.
+
 ## 0.2.0 (unreleased)
 
 The first version meant for other people's machines.

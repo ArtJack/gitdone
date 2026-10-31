@@ -1,6 +1,6 @@
 # JSON output
 
-`--json` before or after the command, on `check`, `opener`, `week`, `where`, `rows`, `report`, `doctor`, `chart` and `portfolio`, gives the same findings as data,
+`--json` before or after the command, on `check`, `opener`, `next`, `eta`, `focus`, `matrix`, `week`, `where`, `rows`, `report`, `doctor`, `chart` and `portfolio`, gives the same findings as data,
 from the same code as the words. Exit codes do not change. An engine error is JSON too: `{"result": "cannot run", "exit_code": 2, "error": "..."}`.
 
 ## `check --json`
@@ -54,12 +54,45 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 }
 ```
 
+## `eta --json`
+
+```json
+{
+  "state": "dated",
+  "as_of": "2026-03-03",
+  "rows": 16,
+  "left": 8.7,
+  "strict": 0.25,
+  "weighted": 0.456,
+  "window_days": 28,
+  "moving_days": 6,
+  "pace_per_day": 0.211,
+  "likely": "2026-04-14",
+  "sure": "2026-04-29",
+  "too_far": false,
+  "largest_day_share": 0.31,
+  "last_change": null,
+  "scope": {"added": 5, "removed": 0, "if_it_goes_on": null, "never_catches_up": false},
+  "deadline": {"date": "2026-04-15", "start": "2026-01-12", "days_left": 43, "time_used": 0.54, "needs_per_day": 0.202, "late_by": -1, "late_by_if_sure": 14},
+  "workstreams": [{"id": "S1", "name": "Reading lists and renewals", "left": 0.4, "dates": {"likely": "2026-03-05", "sure": "2026-03-06", "too_far": false}}]
+}
+```
+
+`state` is `dated`, `too_little`, `stalled`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date. A negative `late_by` is early.
+
+## `focus --json`
+
+`days`, `since`, `revisions`, `commits`, `on_plan`, `upkeep`, `off_plan`, `tracker_only`, `lines` (the same three, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `commits`), `next`, and
+`list`: every commit with `commit`, `date`, `subject`, `class` (`on plan`, `upkeep`, `off plan`, `tracker`), `rows`, `because`, `lines`, `area`.
+
 ## The rest
 
+- **`next --json`:** `workstream` (or null), `rows` (each `row`, `name`, `kind`, `note`), `open_rows`.
+- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, and `summary`.
 - **`where --json`:** `plan`, `table`, `view`, `repo`, `default_branch`, `verdict`.
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.
 - **`doctor --json`:** `exit_code` and `items`, each with `state` (`ok`, `warn`, `fail`), `name`, `detail`.
-- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, in rows. `chart --csv` is the same as CSV.
-- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `next`, `gate`, or `error`.
+- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, in rows. `chart --csv` is the same as CSV. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives.
+- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `next`, `gate`, or `error`.
 - **`badge`:** prints the JSON a [shields.io endpoint](https://shields.io/badges/endpoint-badge) reads.

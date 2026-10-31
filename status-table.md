@@ -80,3 +80,13 @@ from it.
 | 38 | Version 1.0 on PyPI, after two weeks of its own gate | Not built | |
 | 39 | Listed where people look: awesome lists, a Show HN | Not built | |
 | 40 | A write-up with real numbers | Not built | |
+
+### 8. Time and focus (5)
+
+| # | Capability | Status | Note |
+|---|---|---|---|
+| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Partial | On a branch until the first release is out. |
+| 45 | `focus` and `next`: where the commits went, what comes next, and a hook that says when a commit was off plan | Partial | On a branch until the first release is out. |
+| 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Partial | On a branch until the first release is out. |
+| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Partial | On a branch until the first release is out. |
+| 48 | The agent rules, the skill and the MCP tools say all of this | Partial | On a branch until the first release is out. |

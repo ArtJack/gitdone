@@ -9,9 +9,12 @@ a command refuses. Four ways in, from least to most.
 gitdone install-agents
 ```
 
-This adds a short section to `AGENTS.md`, and to `CLAUDE.md` if the project has one: run `gitdone` at the start of a session,
-move a row only with `shipped`, report a refusal instead of working around it. It keeps what is already in those files, and running
-it again changes nothing.
+This adds a short section to `AGENTS.md`, and to `CLAUDE.md` if the project has one: run `gitdone` at the start of a session, work on what `gitdone next`
+lists, name the row in the commit message, say so before doing anything else, move a row only with `shipped`, report a refusal instead of working around it. It keeps what is already in
+those files, and running it again changes nothing.
+
+Agents drift because nothing in front of them says where the line is. Here it is the first thing a session prints, the commit that leaves it is told so, and the [numbers](timeline.md) show up in the
+next session. The files and the gate hold the line. No agent has to.
 
 `--json` on every reading command is there for agents, and [`AGENTS.md`](../AGENTS.md) in this repository is a model.
 
@@ -39,6 +42,8 @@ The plugin is thin: a shim over the engine it bundles, the two skills, and one S
 | `/gitdone:status shipped <row> <evidence>` | Moves one row to Live through the engine |
 | `/gitdone:status mark <row> <kind> <words>` | Moves one row short of Live |
 | `/gitdone:status rows` | Lists what is left |
+| `/gitdone:status next` | What to work on now |
+| `/gitdone:status eta` or `focus` or `matrix` | The date, where the commits went, the traceability matrix |
 | `/gitdone:status week [since]` | Prints the delta line |
 | `/gitdone:status check` or `doctor` | The gate, or the health check |
 

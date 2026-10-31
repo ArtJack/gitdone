@@ -50,6 +50,24 @@ exit 0
 """
 
 
+FOCUS_HOOK = "post-commit"
+FOCUS_TEMPLATE = """#!/bin/sh
+# {mark} (local, never committed). Written by `gitdone install-hook`.
+# It says so when a commit names no row and matches none. It never stops anything: the commit has already happened.
+top=$(git rev-parse --show-toplevel)
+{plan_line}
+home={home}
+python={python}
+[ -x "$python" ] || python=$(command -v python3 || command -v python)
+if [ -f "$home/gitdone/__main__.py" ] && [ -n "$python" ]; then
+  "$python" -I -c '{launch}' "$home" {focus} || true
+elif command -v gitdone >/dev/null 2>&1; then
+  gitdone {focus} || true
+fi
+exit 0
+"""
+
+
 def _inside(path, root):
     """A path below the repository's root, the way git writes it; or None."""
     real = os.path.realpath(path)
@@ -84,16 +102,27 @@ def _hook_text(plan, root, strict=True):
                            tracked=tracked_words, check=check + (STRICT if strict else ""), launch=LAUNCH)
 
 
+def _focus_text(plan, root):
+    if _found_from_commit(plan, root):
+        plan_line, focus = "# The plan is found from the top of this worktree.", "focus --last"
+    else:
+        plan_rel = _inside(plan.path, root)
+        plan_line = "plan=" + ('"$top"/' + shlex.quote(plan_rel) if plan_rel else shlex.quote(str(plan.path)))
+        focus = 'focus --last --plan "$plan"'
+    return FOCUS_TEMPLATE.format(mark=MARK, home=shlex.quote(str(HOME)), python=shlex.quote(sys.executable), plan_line=plan_line, focus=focus, launch=LAUNCH)
+
+
 def is_ours(text):
     """A hook this engine wrote: the mark on its second line. Someone's hook that only mentions the words is theirs."""
     lines = text.split("\n")
     return len(lines) > 1 and lines[1].startswith(f"# {MARK} (local")
 
 
-def install(plan, strict=True):
+def install(plan, strict=True, focus=True):
     """Returns the hooks' paths. Refuses to replace a hook this engine did not write, or to write one into the work tree.
 
-    Strict is the default: a commit that would add a Live row with nothing behind it is refused, not warned about.
+    Strict is the default: a commit that would add a Live row with nothing behind it is refused, not warned about. The focus hook only ever
+    says something, so someone's own post-commit hook simply keeps its place.
     """
     top = gitio.git(plan.doc.parent, "rev-parse", "--show-toplevel")
     if top.code:
@@ -119,6 +148,11 @@ def install(plan, strict=True):
     for path in paths:
         write_atomically(path, text)
         path.chmod(0o755)
+    after = hooks / FOCUS_HOOK
+    if focus and (not after.exists() or is_ours(after.read_text(encoding="utf-8", errors="replace"))):
+        write_atomically(after, _focus_text(plan, root))
+        after.chmod(0o755)
+        paths.append(after)
     return paths
 
 

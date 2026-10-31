@@ -19,7 +19,8 @@ def _pull_request_words(verifier, number):
     if isinstance(verifier._prs, dict) and number in verifier._prs:
         pr = verifier._prs[number]
         merged = str(pr.get("mergedAt") or "")[:10]
-        return {"title": pr.get("title", ""), "date": merged, "url": pr.get("url", "")}
+        landed = pr.get("mergeCommit") or {}
+        return {"title": pr.get("title", ""), "date": merged, "url": pr.get("url", ""), "commit": str(landed.get("oid") or "")[:12] or None}
     return None
 
 

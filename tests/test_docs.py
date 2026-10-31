@@ -130,6 +130,28 @@ class TheChartInTheReadme(unittest.TestCase):
         self.assertEqual(drawn, (ROOT / "docs" / "img" / "bramble-burnup.svg").read_text(encoding="utf-8"))
 
 
+class TheTimelineInTheReadme(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("timeline", ROOT / "docs" / "demo" / "timeline.py")
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+        with tempfile.TemporaryDirectory() as folder:
+            cls.block, cls.picture = cls.module.produce(folder)
+
+    def test_the_readme_block_is_what_the_commands_print(self):
+        shown = README[README.index(self.module.START) + len(self.module.START):README.index(self.module.END)].strip()
+        self.assertEqual(self.module.normalized(shown), self.module.normalized(self.block))
+
+    def test_the_picture_is_what_the_command_draws(self):
+        drawn = (ROOT / "docs" / "img" / "bramble-burndown.svg").read_text(encoding="utf-8")
+        self.assertEqual(drawn, self.picture)
+
+    def test_it_tells_the_story_it_is_there_for(self):
+        for words in ("not a promise", "85% sure", "That moves the likely date", "Off plan", "Time "):
+            self.assertIn(words, self.block)
+
+
 def shipped_files():
     """What a release holds: the tracked files, whatever else sits in a checkout. An unpacked archive has no git, so everything."""
     done = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, text=True)

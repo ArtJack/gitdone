@@ -16,6 +16,7 @@ from .discover import POINTER
 from .plan import DEFAULT_KINDS, RULE_KEYS, Plan, PlanError, read_file
 
 OK, CONTRADICTION, CANNOT_RUN, MISSING = 0, 1, 2, 3
+MOST_REQUIREMENTS_SAID = 10
 FRESH, STALE, ABSENT_VIEW, NOT_COMPARED = "fresh", "stale", "missing", "not compared"
 Finding = collections.namedtuple("Finding", "text rows next", defaults=(None,))  # next: what to do about it, on its own line
 
@@ -216,6 +217,18 @@ def _workstream_notes(plan, notes):
             notes.append(Finding(f"workstream {w.get('id')} is in the plan and not in its order, so the view does not show it", []))
 
 
+def _requirement_notes(plan, table, notes):
+    """A scope document that has moved past the table is said, and it stops nothing: it is not a claim anybody made."""
+    from . import requirements
+    found = requirements.coverage(plan, table)
+    missing = found["without"]
+    for item in missing[:MOST_REQUIREMENTS_SAID]:
+        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}) has no row, so the percent leaves it out", [], f'gitdone add "{item.label()[:60]}"'))
+    if len(missing) > MOST_REQUIREMENTS_SAID:
+        notes.append(Finding(f"and {len(missing) - MOST_REQUIREMENTS_SAID} more requirements have no row: gitdone matrix", []))
+    notes.extend(Finding(words, []) for words in found["problems"])
+
+
 def _staged_reader(root, plan_path):
     """Reads a file as this commit will contain it. A file outside the repository is not part of the commit."""
     def read(path):
@@ -316,6 +329,8 @@ def rule_changes(plan, old, moved_from=None):
             out.append(f"this changes the gate's own rules: {key} was {json.dumps(was)}, now {json.dumps(now)}")
         else:
             out.append(f"this changes the gate's own rules: {key} changed")
+    if old.get("deadline") != plan.data.get("deadline"):
+        out.append(f"the deadline moved: it was {old.get('deadline') or 'not set'}, now {plan.data.get('deadline') or 'not set'}")
     return out
 
 
@@ -501,6 +516,8 @@ def report(plan, strict=False, offline=False, staged=False):
     out.tally = _evidence(plan, table, verifier, out.fails, out.missing, out.notes, strict=strict)
     out.head.append("evidence: " + ", ".join(f"{out.tally[k]} {k}" for k in (evidence.VERIFIED, evidence.UNVERIFIED, "missing", evidence.CONTRADICTED)))
     _workstream_notes(plan, out.notes)
+    if plan.requirements:
+        _requirement_notes(plan, table, out.notes)
     note = verdict.annotate(plan)
     if note:
         out.verdict = note.line

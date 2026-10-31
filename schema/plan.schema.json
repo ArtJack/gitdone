@@ -24,6 +24,18 @@
     },
     "evidence_pattern": {"type": "string", "description": "A regular expression that also counts as naming a release. A named group `ref` is held to the commit rules as a commit id or a tag, never a branch. Any other match is only reported, and --strict does not count it."},
     "verdict_state": {"type": "string", "description": "A Verdict state.json, read and never written. Its record goes to the terminal, never into the view."},
+    "deadline": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "A date. The view states it, `eta` measures against it, and moving it is said out loud."},
+    "start": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "When the work began, for the time bar. Default: the table's first commit."},
+    "requirements": {"type": "array", "items": {"type": "string"}, "description": "Markdown files inside the project that hold what was asked for: `REQ-12: words`, or checklist items."},
+    "focus": {
+      "type": "object",
+      "description": "What ties commits to rows.",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {"type": "object", "description": "A row, a range or a workstream, to the file patterns that are its work.", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "upkeep": {"type": "array", "items": {"type": "string"}, "description": "File patterns that count as upkeep. Replaces the default list."}
+      }
+    },
     "generated_by": {"type": "string", "description": "The command words in the view's header.", "default": "gitdone render"},
     "regenerate": {"type": "string", "description": "The command a person runs to regenerate the view.", "default": "gitdone render --write"},
     "noun": {"type": "string", "description": "The word after a group's total.", "default": "rows"},

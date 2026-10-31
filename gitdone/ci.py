@@ -95,6 +95,7 @@ def summary(plan, table, report, base=None, branch=None):
     if data["next"]:
         needs = f" Needs {data['next']['needs']}." if data["next"]["needs"] else ""
         L += [f"Next: **{data['next']['id']}** {data['next']['name']}.{needs}", ""]
+    L += _when_and_scope(plan, base)
     moved_rules = rule_changes(plan, base) if base else []
     if moved_rules:
         L += ["**⚠ This pull request changes the gate's own rules. Review these lines first:**", ""]
@@ -106,6 +107,35 @@ def summary(plan, table, report, base=None, branch=None):
         L += [f"- {gate.said(f)}" for f in findings]
         L += ["", "</details>", ""]
     return "\n".join(L)
+
+
+def _when_and_scope(plan, base):
+    """What the change costs, for whoever is deciding whether a feature is worth its days. A favour: it never costs the comment the gate's word."""
+    from . import forecast, requirements
+    out = []
+    try:
+        if base and evidence.SAFE_REF.match(str(base)):
+            changed = forecast.against(plan, base)
+            if changed:
+                said = []
+                if changed["added"]:
+                    said.append("adds rows " + ", ".join(str(n) for n in changed["added"]))
+                if changed["removed"]:
+                    said.append("takes out rows " + ", ".join(str(n) for n in changed["removed"]))
+                out.append("**Scope:** this " + " and ".join(said) + "." + (f" {changed['date_moved']}" if changed["date_moved"] else ""))
+        found = forecast.data(plan)
+        if found["state"] in ("dated", "stalled"):
+            out.append(f"**When:** {forecast.headline(found)}")
+        if found["deadline"]:
+            out.append(f"**{forecast._deadline_words(found)}**")
+        if plan.requirements:
+            without = requirements.coverage(plan, tables.load_clean(plan))["without"]
+            if without:
+                places = ", ".join(f"`{item.where()}`" for item in without[:5]) + (f", and {len(without) - 5} more" if len(without) > 5 else "")
+                out.append(f"**Requirements with no row:** {places}. The percent and the date leave them out.")
+    except (PlanError, OSError, ValueError):
+        return []
+    return ["\n\n".join(out), ""] if out else []
 
 
 def _gh(args, stdin_text=None):
@@ -167,8 +197,12 @@ def publish(repo, branch, files, message):
 
 
 def badge_files(plan, table):
+    from . import forecast
+    points = chart.points(plan)
+    found = forecast.data(plan)
     return {"badge.svg": badge.svg(plan, table), "badge.json": json.dumps(badge.endpoint(plan, table)) + "\n",
-            "burnup.svg": chart.svg(chart.points(plan), plan.title), "burnup.csv": chart.csv_text(chart.points(plan))}
+            "burnup.svg": chart.svg(points, plan.title), "burnup.csv": chart.csv_text(points),
+            "burndown.svg": chart.burndown(points, plan.title, found, forecast.headline(found))}
 
 
 def _append(env_name, text):
@@ -176,6 +210,20 @@ def _append(env_name, text):
     if path:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(text)
+
+
+def _say_focus(plan, base):
+    """A pull request that leaves the table alone gets no comment. Where its commits went still goes in the run's log and summary."""
+    from . import focus
+    if not evidence.SAFE_REF.match(str(base)):
+        return
+    try:
+        words = focus.counts_words(focus.data(plan, revisions=f"{base}..HEAD"))
+    except (PlanError, ValueError):
+        return
+    if words:
+        print(f"gitdone: {words}")
+        _append("GITHUB_STEP_SUMMARY", f"gitdone. {words}\n")
 
 
 def run(plan, strict=False, comment=True, base=None, publish_branch=None, always=False):
@@ -186,6 +234,7 @@ def run(plan, strict=False, comment=True, base=None, publish_branch=None, always
     branch = (pr.get("base") or {}).get("ref")
     if pr and base and not always and not touched(plan, base):
         print("gitdone: this pull request does not touch the tracker, so it is not judged")
+        _say_focus(plan, base)
         _append("GITHUB_OUTPUT", "result=not touched\nexit-code=0\n")
         return gate.OK
     report = gate.report(plan, strict=strict)
