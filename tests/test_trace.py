@@ -16,7 +16,7 @@ class Parsing(unittest.TestCase):
         return [(i.ident, i.words, i.line) for i in requirements.parse(text, "spec.md")]
 
     def test_the_shapes_a_spec_is_written_in(self):
-        text = "\n".join(["# Spec", "", "- REQ-1: one", "- **REQ-2**: two", "1. REQ-3 three", "### FR-4 four", "| US-5 | five | high |", "**AC-6.** six", "`NFR-7` seven",
+        text = "\n".join(["# Spec", "", "- REQ-1: one", "- **REQ-2**: two", "1. REQ-3 three", "### FR-4 four", "| US-5 | five | high |", "**AC-6.** six", "`NFR-7`: seven",
                           "- [ ] REQ-8 eight", "- [x] REQ-9.1: nine"])
         self.assertEqual([i[0] for i in self.items(text)], ["REQ-1", "REQ-2", "REQ-3", "FR-4", "US-5", "AC-6", "NFR-7", "REQ-8", "REQ-9.1"])
         self.assertEqual([i[1] for i in self.items(text)], ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine"])
@@ -168,8 +168,8 @@ class Gate(RequirementCase):
     def test_a_deadline_that_moves_is_said(self):
         self.write_plan(requirements=["docs/spec.md"], deadline="2027-01-01")
         old = json.loads(git(self.repo, "show", "HEAD:.gitdone.json"))
-        words = gate.rule_changes(self.plan(), old)
-        self.assertIn("the deadline moved: it was not set, now 2027-01-01", words)
+        self.assertEqual(gate.deadline_moved(self.plan(), old), "the deadline moved: it was not set, now 2027-01-01")
+        self.assertEqual(gate.rule_changes(self.plan(), old), [])  # it is said, and not as a change to the gate's rules
 
 
 class Matrix(RequirementCase):
@@ -196,7 +196,7 @@ class Matrix(RequirementCase):
     def test_the_headline_counts_the_gaps(self):
         self.live()
         words = trace.markdown(self.plan(), offline=True)
-        self.assertIn("**3 of 4 requirements have a row, and 1 of them are all Live (25%).**", words)
+        self.assertIn("**3 of 4 requirements have a row, and 1 are fully Live (25%).**", words)
         self.assertIn("1 of 4 rows answer to no requirement.", words)
         self.assertIn("2 of 2 Live rows have a test on record.", words)
 

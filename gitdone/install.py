@@ -54,6 +54,10 @@ FOCUS_HOOK = "post-commit"
 FOCUS_TEMPLATE = """#!/bin/sh
 # {mark} (local, never committed). Written by `gitdone install-hook`.
 # It says so when a commit names no row and matches none. It never stops anything: the commit has already happened.
+# A rebase replays work already judged when it was first committed, so it is left alone.
+if [ -d "$(git rev-parse --git-path rebase-merge)" ] || [ -d "$(git rev-parse --git-path rebase-apply)" ]; then
+  exit 0
+fi
 top=$(git rev-parse --show-toplevel)
 {plan_line}
 home={home}
@@ -103,13 +107,10 @@ def _hook_text(plan, root, strict=True):
 
 
 def _focus_text(plan, root):
-    if _found_from_commit(plan, root):
-        plan_line, focus = "# The plan is found from the top of this worktree.", "focus --last"
-    else:
-        plan_rel = _inside(plan.path, root)
-        plan_line = "plan=" + ('"$top"/' + shlex.quote(plan_rel) if plan_rel else shlex.quote(str(plan.path)))
-        focus = 'focus --last --plan "$plan"'
-    return FOCUS_TEMPLATE.format(mark=MARK, home=shlex.quote(str(HOME)), python=shlex.quote(sys.executable), plan_line=plan_line, focus=focus, launch=LAUNCH)
+    # A plan inside the repository is named from the top, so a linked worktree's hook reads that worktree's plan, and a tracker in a subfolder is found.
+    plan_rel = _inside(plan.path, root)
+    plan_line = "plan=" + ('"$top"/' + shlex.quote(plan_rel) if plan_rel else shlex.quote(str(plan.path)))
+    return FOCUS_TEMPLATE.format(mark=MARK, home=shlex.quote(str(HOME)), python=shlex.quote(sys.executable), plan_line=plan_line, focus='focus --last --plan "$plan"', launch=LAUNCH)
 
 
 def is_ours(text):
@@ -149,11 +150,25 @@ def install(plan, strict=True, focus=True):
         write_atomically(path, text)
         path.chmod(0o755)
     after = hooks / FOCUS_HOOK
-    if focus and (not after.exists() or is_ours(after.read_text(encoding="utf-8", errors="replace"))):
+    ours = not after.exists() or is_ours(after.read_text(encoding="utf-8", errors="replace"))
+    if ours and focus:
         write_atomically(after, _focus_text(plan, root))
         after.chmod(0o755)
         paths.append(after)
+    elif ours and after.exists():
+        after.unlink()
     return paths
+
+
+def someones_post_commit(plan):
+    """The path of a post-commit hook this engine did not write, if there is one: it keeps its place, and whoever installs should hear what that means."""
+    top = gitio.git(plan.doc.parent, "rev-parse", "--show-toplevel")
+    if top.code:
+        return None
+    root = os.path.realpath(top.out.strip())
+    where = gitio.git(root, "rev-parse", "--git-path", "hooks").out.strip()
+    path = (pathlib.Path(where) if os.path.isabs(where) else pathlib.Path(root) / where) / FOCUS_HOOK
+    return path if path.exists() and not is_ours(path.read_text(encoding="utf-8", errors="replace")) else None
 
 
 def _skill_source():

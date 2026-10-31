@@ -38,7 +38,7 @@ def _numbers(directory):
     report = gate.report(plan, offline=True)
     try:
         likely = forecast.data(plan)["likely"]
-    except PlanError:  # a tracker outside any repository has no pace, and the rest of its line still stands
+    except Exception:  # a tracker outside any repository has no pace, and the rest of its line still stands
         likely = None
     return {"likely": likely, "title": plan.title, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
             "weighted": tables.score(rows, plan.weights), "next": following["id"] if following else None,

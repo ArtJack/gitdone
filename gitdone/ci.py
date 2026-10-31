@@ -62,20 +62,37 @@ def touched(plan, base):
     if done.code:
         return True
     names = {os.path.realpath(os.path.join(top.out.strip(), p)) for p in done.out.split("\0") if p}
-    return bool(names & {os.path.realpath(p) for p in plan.tracked}) or any(os.path.basename(n) == POINTER for n in names)
+    watched = {os.path.realpath(p) for p in plan.tracked} | _requirement_files(plan)
+    return bool(names & watched) or any(os.path.basename(n) == POINTER for n in names)
 
 
-def rule_changes(plan, base):
-    """What this change does to the gate's own rules, compared with the base. The plan is a file a pull request can edit."""
+def _requirement_files(plan):
+    """A pull request that changes what was asked for has changed what the percent means, so it is judged."""
+    out = set()
+    for name in plan.requirements:
+        try:
+            out.add(os.path.realpath(plan._path(name)))
+        except (OSError, ValueError, RuntimeError):
+            continue
+    return out
+
+
+def _plan_at(plan, base):
+    """(the plan as the base has it, where it moved from), or (None, None)."""
     top = gitio.git(plan.path.parent, "rev-parse", "--show-toplevel")
     if top.code or not evidence.SAFE_REF.match(str(base)):
-        return []
+        return None, None
     root = os.path.realpath(top.out.strip())
 
     def show(path):
         done = gitio.git(root, "show", f"{base}:{path}")
         return done.out if done.code == 0 else None
-    old, moved_from = gate.plan_before(root, os.path.realpath(plan.path), show)
+    return gate.plan_before(root, os.path.realpath(plan.path), show)
+
+
+def rule_changes(plan, base):
+    """What this change does to the gate's own rules, compared with the base. The plan is a file a pull request can edit."""
+    old, moved_from = _plan_at(plan, base)
     return gate.rule_changes(plan, old, moved_from)
 
 
@@ -109,11 +126,19 @@ def summary(plan, table, report, base=None, branch=None):
     return "\n".join(L)
 
 
+def _in_code(words):
+    """Words from a plan, in a comment that people read: a code span holds them, and they cannot become a link, an image or a mention."""
+    return "`" + render.one_line(words).replace("`", "'") + "`"
+
+
 def _when_and_scope(plan, base):
-    """What the change costs, for whoever is deciding whether a feature is worth its days. A favour: it never costs the comment the gate's word."""
+    """What the change costs, for whoever is deciding whether a feature is worth its days. A favour: whatever goes wrong here, the comment keeps the gate's word."""
     from . import forecast, requirements
     out = []
     try:
+        moved = gate.deadline_moved(plan, _plan_at(plan, base)[0]) if base else None
+        if moved:
+            out.append(f"**Deadline:** {_in_code(moved)}")
         if base and evidence.SAFE_REF.match(str(base)):
             changed = forecast.against(plan, base)
             if changed:
@@ -131,9 +156,9 @@ def _when_and_scope(plan, base):
         if plan.requirements:
             without = requirements.coverage(plan, tables.load_clean(plan))["without"]
             if without:
-                places = ", ".join(f"`{item.where()}`" for item in without[:5]) + (f", and {len(without) - 5} more" if len(without) > 5 else "")
+                places = ", ".join(_in_code(item.where()) for item in without[:5]) + (f", and {len(without) - 5} more" if len(without) > 5 else "")
                 out.append(f"**Requirements with no row:** {places}. The percent and the date leave them out.")
-    except (PlanError, OSError, ValueError):
+    except Exception:
         return []
     return ["\n\n".join(out), ""] if out else []
 
@@ -219,7 +244,7 @@ def _say_focus(plan, base):
         return
     try:
         words = focus.counts_words(focus.data(plan, revisions=f"{base}..HEAD"))
-    except (PlanError, ValueError):
+    except Exception:  # a favour, and the gate's exit code still decides
         return
     if words:
         print(f"gitdone: {words}")

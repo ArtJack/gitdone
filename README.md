@@ -129,10 +129,11 @@ A percent does not say when, and it does not say why a month became three. These
 ```console
 $ gitdone eta
 Likely done Apr 14, 85% sure by Apr 29: a line through the last 28 days, not a promise.
+Counting only Live rows: likely Jun 23, 85% sure by Jul 31.
 Left: 8.7 of 16 rows (weighted 46%, strict 25%).
-Pace: 0.21 rows a day; rows moved on 6 of 28 days.
+Pace: 0.21 rows a day; rows moved on 6 of 28 days. 71% of that stopped short of Live, which only a note holds up.
 Scope: 5 rows added, 0 taken out in that time.
-Deadline Apr 15: likely 1 day early. It needs 0.2 rows a day from here; the pace is 0.21.
+Deadline Apr 15: likely 1 day early, or 69 days late counting only Live rows. It needs 0.2 rows a day from here; the pace is 0.21.
   Work █████████░░░░░░░░░░░ 46%
   Time ███████████░░░░░░░░░ 54%, Jan 12 to Apr 15
 
@@ -148,9 +149,9 @@ That moves the likely date from Apr 14 to Apr 19 (+5 days).
 
 $ gitdone focus
 Last 14 days: 13 commits.
-  On plan    8   62%  rows 7 (2), 10 (2), 3 (1), 6 (1), 9 (1), 15 (1)
-  Upkeep     2   15%
-  Off plan   3   23%  printer (2), theme (1)
+  On plan    8   62%  12 lines  rows 7 (2), 10 (2), 3 (1), 6 (1), 9 (1), 15 (1)
+  Upkeep     2   15%   2 lines
+  Off plan   3   23%   3 lines  in printer (2), theme (1)
 
 Off plan, newest first:
   1cb92cf Rewrite the receipt printer driver again (printer)
@@ -176,7 +177,7 @@ says what it is. [How each is worked out, and what it cannot tell](docs/timeline
   does not touch the tracker. Sixty claims in a repository of a thousand commits take about 0.2 seconds.
 - **Claims that can stop holding.** Each run checks each row again. A reverted commit, through `git revert` or GitHub's button, turns its
   row into a failure until someone says what is true now, and the headline says so.
-- **A date with its range, and what a feature costs.** `eta` draws a line through the table's own history and says it is a line. `add` and `remove` say what they did to it. With a
+- **A date with its range, and what a feature costs.** `eta` draws a line through the table's own history and says it is a line, and a second one through Live rows alone, because a weight is a claim too. `add` and `remove` say what they did to it. With a
   deadline, it says how late, and burns time against work.
 - **Focus.** `focus` sorts recent commits into on plan, upkeep and off plan, with the reason for each. `next` lists the rows to work on now. A hook says when a commit was off plan, and the
   opener says the numbers when an agent starts a session.

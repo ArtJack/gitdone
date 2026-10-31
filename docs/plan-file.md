@@ -24,7 +24,7 @@ that path, or one with uncommitted work in it, is left alone, because nothing co
 | `deadline` | A date, `2026-12-01`. The view states it, `eta` measures against it, and moving it is said out loud. [Details](timeline.md) |
 | `start` | When the work began, for the time bar, if the table is younger than the work; default the table's first commit |
 | `requirements` | Markdown files inside the project that hold what was asked for, read by `matrix` and said by `check`. [Details](timeline.md#gitdone-matrix-traceability) |
-| `focus` | `paths`: row, range or workstream to file patterns, which ties commits to rows. `upkeep`: file patterns that replace the default list. [Details](timeline.md#gitdone-focus-where-the-work-went) |
+| `focus` | `paths`: row, range or workstream to file patterns, which ties commits to rows. `upkeep`: file patterns added to the default list. `not_upkeep`: file patterns taken out of it. [Details](timeline.md#gitdone-focus-where-the-work-went) |
 | `generated_by`, `regenerate` | The command words in the view's header |
 | `noun` | The word after a group's total; default `rows` |
 | `scale` | The words of the scale paragraph; default generated from the kinds |

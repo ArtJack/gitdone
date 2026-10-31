@@ -68,10 +68,13 @@ def _time_and_scope(plan, table):
     out = []
     try:
         out.append(_item(OK, "date", forecast.headline(forecast.data(plan))))
-    except (PlanError, OSError, ValueError) as err:
-        out.append(_item(WARN, "date", str(err)))
+    except Exception as err:
+        out.append(_item(WARN, "date", render.one_line(err)))
     if plan.requirements:
-        found = requirements.coverage(plan, table)
+        try:
+            found = requirements.coverage(plan, table)
+        except Exception as err:
+            return out + [_item(WARN, "scope", render.one_line(err))]
         count = len(found["items"]) - len(found["without"])
         words = f"{count} of {len(found['items'])} have a row" + "".join(f"; {p}" for p in found["problems"])
         out.append(_item(WARN if found["without"] or found["problems"] else OK, "scope", f"requirements: {words}"))

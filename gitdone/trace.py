@@ -134,7 +134,7 @@ def markdown(plan, offline=False, today=None):
          "This does not judge whether the code does what a requirement says.", ""]
     headline = []
     if found["requirements"]:
-        headline.append(f"**{s['with_a_row']} of {s['requirements']} requirements have a row, and {s['requirements_finished']} of them are all {_cell(plan.strict_kind.name)} ({render.pct(s['requirements_finished'] / s['requirements'])}).**")
+        headline.append(f"**{s['with_a_row']} of {s['requirements']} requirements have a row, and {s['requirements_finished']} are fully {_cell(plan.strict_kind.name)} ({render.pct(s['requirements_finished'] / s['requirements'])}).**")
         if s["rows_nobody_asked_for"]:
             headline.append(f"{len(s['rows_nobody_asked_for'])} of {s['rows']} rows answer to no requirement.")
     headline.append(f"{s['live'] - len(s['live_without_a_test'])} of {s['live']} {_cell(plan.strict_kind.name)} rows have a test on record.")

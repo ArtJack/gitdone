@@ -3,12 +3,17 @@
 `shipped` stays the only way a row reaches the strict kind. These two refuse that, and hold every other kind to its rule.
 """
 import datetime
+import os
+import re
 
-from . import evidence, table as tables
+from . import evidence, gitio, history, table as tables
 from .plan import PlanError
 from .shipped import Refused, fold_note, read_keeping_newlines, save
 
 TABLE_HEAD = ["| # | Name | Status | Note |", "|---|---|---|---|"]
+
+
+OLD_ROW_NUMBER = re.compile(r"^\s*\|\s*(\d{1,9})\s*\|[^|\n]*\|\s*[A-Za-z]", re.M)  # a row: its number, its name, and a status in words
 
 
 def resolve_kind(plan, words):
@@ -51,6 +56,23 @@ def _with_count(line, domain, count):
     return tables.HEADER.sub(lambda _: f"### {domain.n}. {domain.name} ({count})", line, count=1)
 
 
+def _highest_ever(plan):
+    """The highest row number the table's history has held. A row's number is its identity, in the history and in commit messages, so a removed one is not given out again."""
+    try:
+        top = gitio.git(plan.doc.parent, "rev-parse", "--show-toplevel")
+        if top.code:
+            return 0
+        rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top.out.strip())).replace(os.sep, "/")
+        commits = history.table_commits(top.out.strip(), rel, first_parent=True)
+    except PlanError:
+        return 0
+    highest = 0
+    for text in gitio.blobs(top.out.strip(), [f"{sha}:{path}" for sha, _, path in commits]):
+        for number in OLD_ROW_NUMBER.findall(text or ""):
+            highest = max(highest, int(number))
+    return highest
+
+
 def add(plan, name, domain=None, kind=None, note="", new_domain=None):
     """Add one row at the end of a domain. Returns the row's number. It keeps the header's count and the view true."""
     name = _clean(name)
@@ -68,7 +90,7 @@ def add(plan, name, domain=None, kind=None, note="", new_domain=None):
     same = [r.num for r in table.rows.values() if r.name.lower() == name.lower()]
     if same:
         raise Refused(f"row {same[0]} already has that name")
-    number = max(table.rows, default=0) + 1
+    number = max(max(table.rows, default=0), _highest_ever(plan)) + 1
     row_line = f"| {number} | {name} | {chosen.name} | {note} |"
     lines = text.split("\n")
     if new_domain:

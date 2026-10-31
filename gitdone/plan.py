@@ -61,7 +61,7 @@ def _typed(data, key, expected, default):
 
 
 KIND_KEYS = {"name", "short", "phrase", "weight", "evidence"}
-FOCUS_KEYS = {"paths", "upkeep"}
+FOCUS_KEYS = {"paths", "upkeep", "not_upkeep"}
 
 
 def _no_duplicates(pairs):
@@ -210,9 +210,6 @@ class Plan:
         self.start = _date(data, "start")
         self.requirements = _strings(data, "requirements")
         self.focus = _typed(data, "focus", dict, {})
-        for key in self.focus:
-            if key not in FOCUS_KEYS:
-                raise PlanError(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}")
         self.generated_by = data.get("generated_by", "gitdone render")
         self.regenerate = data.get("regenerate", "gitdone render --write")
         self.noun = data.get("noun", "rows")
@@ -232,9 +229,34 @@ class Plan:
             if not isinstance(w, dict) or "id" not in w:
                 raise PlanError(f"workstreams: each one needs an id, got {w!r}")
         self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
+        self._check_focus()
+        if self.deadline and self.start and self.start > self.deadline:
+            raise PlanError(f"start: {self.start} is after the deadline, {self.deadline}")
         self.sections = _typed(data, "sections", list, None) or self._default_sections()
         for section in self.sections:
             self._check_section(section)
+
+    def _check_focus(self):
+        """What ties a commit to a row is read on every commit by the hook, so a mistake in it is said by the plan, where it was made, and a few bytes cannot ask for much."""
+        for key in self.focus:
+            if key not in FOCUS_KEYS:
+                raise PlanError(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}")
+        for key in ("upkeep", "not_upkeep"):
+            value = self.focus.get(key, [])
+            if not isinstance(value, list) or not all(isinstance(p, str) for p in value):
+                raise PlanError(f"focus: {key}: expected a list of file patterns, got {value!r}")
+        raw = self.focus.get("paths", {})
+        if not isinstance(raw, dict):
+            raise PlanError(f"focus: paths: expected rows or workstreams and their file patterns, got {raw!r}")
+        ids = {w.get("id") for w in self.workstreams}
+        named = 0
+        for key, patterns in raw.items():
+            if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+                raise PlanError(f"focus: paths: {key}: expected a list of file patterns, got {patterns!r}")
+            if key not in ids:
+                named += len(numbers(key, f"focus: paths: {key}"))
+                if named > MAX_NUMBERS:
+                    raise PlanError(f"focus: paths names more than {MAX_NUMBERS} rows")
 
     def root(self):
         """The folder this plan may write inside: its repository, or its own folder when it is in none."""

@@ -19,7 +19,7 @@ TABLE_NAME = "status-table.md"
 VIEW_NAME = "STATUS.md"
 BADGE_NAME = "status-badge.svg"
 FOOTER = "Tracked with [gitdone](https://github.com/ArtJack/gitdone): every Live row names its evidence, and git holds it to that."
-CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[( |x|X)\]\s+(.+?)\s*$")
+CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s+\[( |x|X)\]\s+(.*\S)\s*$")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)(?:\s+#+)?\s*$")
 FENCE = re.compile(r"^\s*(```+|~~~+)")
 PLACEHOLDERS = ["First capability", "Second capability", "Third capability"]
@@ -96,6 +96,12 @@ def sections_from_rows(names):
     return [section]
 
 
+def _requirement_in(line):
+    from . import requirements
+    found = requirements._item(line, 0, "")
+    return found if found and found.ident else None
+
+
 def sections_from_checklist(text):
     """Each heading with items under it is a domain. `[x]` is the strict kind, and `[ ]` the last kind."""
     sections, current, heading, fence = [], None, "Scope", None
@@ -113,13 +119,17 @@ def sections_from_checklist(text):
             heading, current = _clean(head.group(1)), None
             continue
         item = CHECK_ITEM.match(line)
-        if not item:
+        from_spec = None if item else _requirement_in(line)
+        if not item and not from_spec:
             continue
         if current is None:
             current = next((s for s in sections if s.name == heading), None)
             if current is None:
                 current = Section(heading)
                 sections.append(current)
+        if from_spec:  # the id goes in the note, so that the matrix can tie the row back to what asked for it
+            current.rows.append((_clean(from_spec.words) or from_spec.ident, LAST, from_spec.ident))
+            continue
         words = _clean(item.group(2))
         if item.group(1) == " ":
             current.rows.append((words, LAST, ""))
@@ -203,7 +213,7 @@ def _json_text(data):
     return text.replace('"@KINDS@"', "[\n" + body + "\n  ]") + "\n"
 
 
-def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAME, badge=None):
+def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAME, badge=None, requirements=None):
     """Write the plan and the table; the caller renders the view. Refuses to overwrite anything."""
     directory = pathlib.Path(directory).resolve()
     if not directory.is_dir():
@@ -224,6 +234,8 @@ def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAM
         raise PlanError("these rows cannot make a table: " + "; ".join(problems))
     write_atomically(table_path, text)
     data = plan_data(title, in_git, default_branch(directory) if in_git else None, table, view, badge)
+    if requirements:
+        data["requirements"] = requirements
     write_atomically(plan_path, _json_text(data))
     return plan_path, in_git
 
