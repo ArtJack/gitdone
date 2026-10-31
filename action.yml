@@ -1,0 +1,70 @@
+name: "gitdone gate"
+description: "Hold every status claim to git in pull requests: annotations on the table, one comment with what moved, a badge and a burn-up chart."
+author: ArtJack
+branding:
+  icon: "check-square"
+  color: "blue"
+
+inputs:
+  plan:
+    description: "The plan file. Default: found from the working directory."
+    default: ""
+  strict:
+    description: "Fail on missing evidence too, not only on a proven contradiction."
+    default: "true"
+  comment:
+    description: "Keep one comment up to date on the pull request (needs permissions: pull-requests: write)."
+    default: "true"
+  always:
+    description: "Judge a pull request that does not touch the tracker too."
+    default: "false"
+  publish-branch:
+    description: "On a push, commit badge.svg, badge.json, burnup.svg and burnup.csv to this branch (needs permissions: contents: write). Empty: publish nothing."
+    default: ""
+  working-directory:
+    description: "Where to run. Default: the repository's root."
+    default: "."
+
+outputs:
+  result:
+    description: "pass, warnings, fail, cannot run, or not touched"
+    value: ${{ steps.gate.outputs.result }}
+  exit-code:
+    description: "The gate's exit code: 0 clean, 1 contradiction, 2 could not run, 3 strict evidence missing"
+    value: ${{ steps.gate.outputs.exit-code }}
+  strict:
+    description: "The strict percentage"
+    value: ${{ steps.gate.outputs.strict }}
+  weighted:
+    description: "The weighted percentage"
+    value: ${{ steps.gate.outputs.weighted }}
+
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ST_HOME: ${{ github.action_path }}
+        ST_PLAN: ${{ inputs.plan }}
+        ST_STRICT: ${{ inputs.strict }}
+        ST_COMMENT: ${{ inputs.comment }}
+        ST_ALWAYS: ${{ inputs.always }}
+        ST_PUBLISH: ${{ inputs.publish-branch }}
+      # Inputs reach the shell through the environment, never by substitution into the script.
+      run: |
+        python="$(command -v python3 || command -v python)"
+        if [ -z "$python" ]; then
+          echo "::error title=gitdone::this runner has no Python"
+          exit 2
+        fi
+        set -- ci
+        if [ -n "$ST_PLAN" ]; then set -- "$@" --plan "$ST_PLAN"; fi
+        if [ "$ST_STRICT" = "true" ]; then set -- "$@" --strict; fi
+        if [ "$ST_COMMENT" != "true" ]; then set -- "$@" --no-comment; fi
+        if [ "$ST_ALWAYS" = "true" ]; then set -- "$@" --always; fi
+        if [ -n "$ST_PUBLISH" ]; then set -- "$@" --publish "$ST_PUBLISH"; fi
+        # -I keeps the checkout off the import path: a pull request must not be able to supply the engine that judges it.
+        "$python" -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from gitdone.cli import main; sys.exit(main())' "$ST_HOME" "$@"

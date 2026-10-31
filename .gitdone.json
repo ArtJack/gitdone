@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ArtJack/gitdone/main/schema/plan.schema.json",
+  "title": "GitDone",
+  "status_doc": "status-table.md",
+  "status_out": "STATUS.md",
+  "badge": "docs/img/status-badge.svg",
+  "repo": ".",
+  "default_branch": "main",
+  "noun": "capabilities",
+  "kinds": [
+    {"name": "Live", "phrase": "live on main", "weight": 1.0, "evidence": "release"},
+    {"name": "Built, not live", "short": "Built", "phrase": "built on a branch, not on main", "weight": 0.8, "evidence": "branch"},
+    {"name": "Partial", "phrase": "partial", "weight": 0.4, "evidence": "note"},
+    {"name": "Not built", "phrase": "not built", "weight": 0.0}
+  ],
+  "workstreams": [
+    {"id": "P1", "name": "Foundation", "rows": "7-14", "state": "packaging and scaffold built; CI and the release workflow run for the first time with this commit", "needs": "a green run on GitHub"},
+    {"id": "P2", "name": "Onboarding", "rows": "15-20,43", "state": "built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person", "needs": "one person who has not seen it"},
+    {"id": "P3", "name": "Visibility", "rows": "21-26", "state": "built; the Action is tested against stubs and runs on GitHub for the first time with this commit", "needs": "a green run on GitHub"},
+    {"id": "P4", "name": "Evidence and agents", "rows": "27-34,41,42", "state": "built; the skills.sh listing waits for the public repository", "needs": "the public repository"},
+    {"id": "P5", "name": "Adoption", "rows": "35-36", "state": "one real project runs on the engine", "needs": "each project's owner to name its scope"},
+    {"id": "P6", "name": "Launch", "rows": "37-40", "state": "going public now", "needs": "two weeks of its own gate before 1.0"}
+  ],
+  "order": ["P1", "P2", "P3", "P4", "P5", "P6"],
+  "decisions": [
+    {"id": "D1", "what": "The name", "state": "decided 2026-10-31: GitDone"}
+  ],
+  "sections": [
+    {"type": "group", "style": "full"},
+    {"type": "workstreams"},
+    {"type": "list", "title": "Decisions", "from": "decisions", "format": "- **{id}.** {what}: {state}"}
+  ]
+}

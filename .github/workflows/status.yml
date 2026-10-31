@@ -1,0 +1,23 @@
+name: status
+
+# This repository holds itself to its own gate, with its own Action.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write       # for the badge branch
+  pull-requests: write  # for the one comment
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # evidence needs the whole history
+      - uses: ./
+        with:
+          publish-branch: status-badges

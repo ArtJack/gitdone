@@ -1,0 +1,8 @@
+# For the pre-commit framework. The check itself stays out of a commit that does not touch the tracker.
+- id: gitdone
+  name: gitdone gate
+  description: Refuses a commit that would make the status view lie, judged from what the commit will contain.
+  entry: gitdone check --if-staged --strict
+  language: python
+  pass_filenames: false
+  always_run: true

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ArtJack/gitdone",
+  "title": "gitdone",
+  "description": "Read-only project status: strict and weighted completion, each claim held to git.",
+  "repository": {
+    "url": "https://github.com/ArtJack/gitdone",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "gitdone",
+      "version": "0.2.0",
+      "packageArguments": [{"type": "positional", "value": "mcp"}],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

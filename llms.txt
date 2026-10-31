@@ -1,0 +1,21 @@
+# gitdone
+
+> A percent done you can defend: strict and weighted completion from one plan file and one status table, with every claim held to git. A row is Live when a commit on the default branch or a merged pull request says so, and a commit that would make the view lie is refused. Python standard library only.
+
+## Start here
+
+- [README](https://raw.githubusercontent.com/ArtJack/gitdone/main/README.md): what it is, install, quickstart, what it can do on your machine
+- [AGENTS.md](https://raw.githubusercontent.com/ArtJack/gitdone/main/AGENTS.md): for agents that use it and agents that change it
+
+## Reference
+
+- [The method](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/method.md): one source, one view, one plan, and what the percentages mean
+- [The status table](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/status-table.md)
+- [The plan file](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/plan-file.md)
+- [Evidence and the gate](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/gate.md)
+- [JSON output](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/json.md)
+- [Changelog](https://raw.githubusercontent.com/ArtJack/gitdone/main/CHANGELOG.md)
+
+## Skill for coding agents
+
+- [gitdone skill](https://raw.githubusercontent.com/ArtJack/gitdone/main/skills/gitdone/SKILL.md)

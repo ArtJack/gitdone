@@ -1,0 +1,114 @@
+name: release
+
+# Publishes to PyPI by Trusted Publishing. There is no API token in this repository: PyPI verifies the workflow's identity.
+# Fires on a version tag. Tag only what is already green on main; the suite runs again here anyway.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Refuse a tag that disagrees with the version files, or has no notes
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          engine="$(python3 -c 'import gitdone; print(gitdone.__version__)')"
+          plugin="$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')"
+          server="$(python3 -c 'import json; print(json.load(open("server.json"))["version"])')"
+          ok=1
+          [ "$want" = "$engine" ] || { echo "::error::tag v$want but gitdone says $engine"; ok=0; }
+          [ "$want" = "$plugin" ] || { echo "::error::tag v$want but .claude-plugin/plugin.json says $plugin"; ok=0; }
+          [ "$want" = "$server" ] || { echo "::error::tag v$want but server.json says $server"; ok=0; }
+          [ "$ok" = 1 ]
+          python3 .github/release_notes.py "$want" > /dev/null
+      - name: Run the suite before building anything
+        run: python3 -m unittest discover -s tests
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check metadata and show what is in the archive
+        run: |
+          uvx twine check dist/*
+          tar -tzf dist/*.tar.gz | sed 's|^[^/]*/||' | sort
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Must match the environment name in the PyPI trusted publisher exactly.
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          python3 .github/release_notes.py "$v" > notes.md
+          title="$(python3 .github/release_notes.py "$v" --title)"
+          gh release create "$GITHUB_REF_NAME" --title "$title" --notes-file notes.md --verify-tag
+      # The README's Action snippet names the major tag, the convention for actions. It follows every release that published.
+      - name: Move the major-version tag to this release
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "$major" "$GITHUB_SHA"
+          git push -f origin "$major"
+
+  # The MCP Server Registry entry. Authenticated by the workflow's identity, so no token exists to leak. It runs after the
+  # PyPI publish, because the registry verifies against the package. The publisher is pinned to one release and its checksum.
+  mcp-registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher (pinned, checksummed)
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+        run: |
+          curl -sSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+      - name: Wait for PyPI to serve the version the registry will verify
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 20); do
+            curl -sf "https://pypi.org/pypi/gitdone/$v/json" > /dev/null && exit 0
+            sleep 15
+          done
+          echo "::error::PyPI has not served $v after five minutes"
+          exit 1
+      - name: Publish server.json
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
