@@ -22,8 +22,6 @@ jobs:
         # The floor is what a stock Mac has; the top is the newest release.
         python: ["3.9", "3.14"]
     runs-on: ${{ matrix.os }}
-    # Windows has not been proven yet. Take this line out once a run has been green there.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3

@@ -14,9 +14,9 @@
     {"name": "Not built", "phrase": "not built", "weight": 0.0}
   ],
   "workstreams": [
-    {"id": "P1", "name": "Foundation", "rows": "7-14", "state": "packaging and scaffold built; CI and the release workflow run for the first time with this commit", "needs": "a green run on GitHub"},
+    {"id": "P1", "name": "Foundation", "rows": "7-14", "state": "CI is green on three operating systems; the release workflow has not run yet", "needs": "the first tag"},
     {"id": "P2", "name": "Onboarding", "rows": "15-20,43", "state": "built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person", "needs": "one person who has not seen it"},
-    {"id": "P3", "name": "Visibility", "rows": "21-26", "state": "built; the Action is tested against stubs and runs on GitHub for the first time with this commit", "needs": "a green run on GitHub"},
+    {"id": "P3", "name": "Visibility", "rows": "21-26", "state": "the gate and the badge branch run on GitHub; the comment on a pull request has not", "needs": "a first pull request"},
     {"id": "P4", "name": "Evidence and agents", "rows": "27-34,41,42", "state": "built; the skills.sh listing waits for the public repository", "needs": "the public repository"},
     {"id": "P5", "name": "Adoption", "rows": "35-36", "state": "one real project runs on the engine", "needs": "each project's owner to name its scope"},
     {"id": "P6", "name": "Launch", "rows": "37-40", "state": "going public now", "needs": "two weeks of its own gate before 1.0"}
