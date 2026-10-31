@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1280" width="1280" height="1280">
+  <rect width="1280" height="1280" fill="#14161a"/>
+  <g transform="translate(0,320)">
+  <g font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+    <text x="84" y="150" font-size="84" font-weight="700" fill="#f0f2f5">GitDone</text>
+    <text x="84" y="240" font-size="46" font-weight="500" fill="#d7dae0">Your agent says it shipped. Git decides.</text>
+    <text x="84" y="298" font-size="30" fill="#8b93a1">A percent done you can defend. Two markdown files, no server, no model calls.</text>
+  </g>
+  <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="27">
+    <rect x="84" y="346" width="1112" height="226" rx="14" fill="#1d2026" stroke="#2c3036"/>
+    <text x="118" y="398"><tspan fill="#6cb6ff">$ </tspan><tspan fill="#f0f2f5">gitdone shipped 1 705af2a</tspan></text>
+    <text x="118" y="438" fill="#ff7b72">refused, nothing changed: commit 705af2a is not on main</text>
+    <text x="118" y="498"><tspan fill="#6cb6ff">$ </tspan><tspan fill="#f0f2f5">gitdone shipped 1 660d81a</tspan></text>
+    <text x="118" y="538" fill="#56d364">row 1: Not built → Live (verified: commit 660d81a is on main)</text>
+  </g>
+  </g>
+</svg>

@@ -1,0 +1,52 @@
+name: Bug report
+description: The engine, the gate, the plugin or the Action misbehaves.
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`gitdone --version`"
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - a command (render, shipped, week, init, ...)
+        - the gate accepted a claim it should not have
+        - the gate refused a claim it should not have
+        - git hook / install-hook
+        - Claude Code plugin
+        - GitHub Action
+        - MCP server
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From a clean start, with the exact commands. The smallest table and plan that shows it helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: The exact output and the exit code.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "macOS 15 · Python 3.12 · git 2.50 · gh 2.80"

@@ -1,0 +1,3 @@
+# A shell script with CRLF line ends does not run, and the view is compared byte for byte.
+* text=auto eol=lf
+*.png binary

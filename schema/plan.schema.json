@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/ArtJack/gitdone/main/schema/plan.schema.json",
+  "title": "gitdone plan",
+  "description": "Everything about a project that its status table cannot say about itself. Paths are relative to this file, and ~ is the home directory.",
+  "type": "object",
+  "required": ["status_doc"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {"type": "string"},
+    "status_doc": {"type": "string", "description": "The status table: the only place a row's status changes."},
+    "status_out": {"type": "string", "description": "The generated view. Default STATUS.md. It must not be the table or the plan.", "default": "STATUS.md"},
+    "title": {"type": "string", "description": "The view's title.", "default": "Status"},
+    "badge": {"type": "string", "description": "A badge file to keep with the view. It is written whenever the view is, and the gate holds it to the table."},
+    "footer": {"type": "string", "description": "Words for the end of the view. `init` puts a link to the tool here; it is yours to change or delete."},
+    "release": {"type": "string", "description": "Words for the release line in the view's header."},
+    "release_sha": {"type": "string", "description": "Which commit counts as the release, when `release` names several."},
+    "repo": {"type": "string", "description": "The repository evidence is checked against."},
+    "default_branch": {"type": "string", "description": "The branch a Live row's commit must be on.", "default": "main"},
+    "branch_aliases": {
+      "type": "object",
+      "description": "Short names a status cell may use for branches.",
+      "additionalProperties": {"type": "string"}
+    },
+    "evidence_pattern": {"type": "string", "description": "A regular expression that also counts as naming a release. A named group `ref` is held to the commit rules as a commit id or a tag, never a branch. Any other match is only reported, and --strict does not count it."},
+    "verdict_state": {"type": "string", "description": "A Verdict state.json, read and never written. Its record goes to the terminal, never into the view."},
+    "generated_by": {"type": "string", "description": "The command words in the view's header.", "default": "gitdone render"},
+    "regenerate": {"type": "string", "description": "The command a person runs to regenerate the view.", "default": "gitdone render --write"},
+    "noun": {"type": "string", "description": "The word after a group's total.", "default": "rows"},
+    "scale": {"type": "string", "description": "The words of the scale paragraph. Default: generated from the kinds."},
+    "rows_total": {"type": "integer", "minimum": 0, "description": "The table's row count. Set it to make a change of scope a deliberate edit."},
+    "kinds": {
+      "type": "array",
+      "description": "The ordered statuses, at least two. The first is what strict counts, so it must have \"evidence\": \"release\"; the last is what a prose domain's rows count as.",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["name", "weight"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "short": {"type": "string", "description": "The table heading."},
+          "phrase": {"type": "string", "description": "The words in running text."},
+          "evidence": {"enum": ["release", "branch", "note", null], "description": "What a row of this kind must name."}
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "description": "Sets of domains measured on their own.",
+      "items": {
+        "type": "object",
+        "required": ["label", "domains"],
+        "properties": {
+          "id": {"type": "string"},
+          "label": {"type": "string"},
+          "title": {"type": "string"},
+          "domains": {"$ref": "#/definitions/numbers"},
+          "total": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "workstreams": {
+      "type": "array",
+      "description": "The queue: named sets of rows, with their state and what they need.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "rows": {"$ref": "#/definitions/numbers"},
+          "state": {"type": "string"},
+          "needs": {"type": "string"}
+        }
+      }
+    },
+    "order": {"type": "array", "items": {"type": "string"}, "description": "Workstream ids. Default: their order in the list."},
+    "sections": {
+      "type": "array",
+      "description": "What the view shows after its header, in order.",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {"enum": ["group", "workstreams", "table", "list", "products", "rows"]},
+          "group": {"type": "string"},
+          "style": {"enum": ["full", "summary"]},
+          "title": {"type": "string"},
+          "from": {"type": "string", "description": "The name of any list in this plan."},
+          "columns": {
+            "type": "array",
+            "items": {"type": "object", "required": ["head", "key"], "properties": {"head": {"type": "string"}, "key": {"type": "string"}}}
+          },
+          "format": {"type": "string"},
+          "heads": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "products": {
+      "type": "array",
+      "description": "Rows of a measure table: static, or computed from a group or rows.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "state": {"type": "string"},
+          "measure": {"type": "string"},
+          "group": {"type": "string"},
+          "rows": {"$ref": "#/definitions/numbers"},
+          "measures": {"type": "array", "items": {"enum": ["strict", "weighted"]}}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "numbers": {
+      "description": "A number, a list of numbers, or a range string like \"1-11,14\".",
+      "oneOf": [
+        {"type": "integer"},
+        {"type": "array", "items": {"type": "integer"}},
+        {"type": "string", "pattern": "^\\s*\\d+(-\\d+)?(\\s*,\\s*\\d+(-\\d+)?)*\\s*$"}
+      ]
+    }
+  }
+}

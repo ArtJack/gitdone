@@ -1,0 +1,15 @@
+{
+  "name": "gitdone",
+  "description": "gitdone: a percent done you can defend, with every claim held to git.",
+  "owner": {
+    "name": "ArtJack",
+    "url": "https://github.com/ArtJack"
+  },
+  "plugins": [
+    {
+      "name": "gitdone",
+      "source": "./",
+      "description": "A percent done you can defend: strict and weighted completion from one plan file and one status table, each claim held to git."
+    }
+  ]
+}

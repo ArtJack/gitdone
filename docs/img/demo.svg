@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 563" width="750" height="563" role="img" aria-label="A terminal session: a commit from a spike branch is refused, the commit on main is accepted, a hand-edited claim stops the commit, and a reverted commit fails the gate.">
+<style>
+.bg{fill:#14161a}.edge{fill:none;stroke:#2c3036}.dot{fill:#3a3f46}
+text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:13px;fill:#d7dae0;white-space:pre}
+.say{fill:#8b93a1}.cmd{fill:#f0f2f5}.prompt{fill:#6cb6ff}.bad{fill:#ff7b72}.good{fill:#56d364}.title{fill:#8b93a1;font-size:12px}
+.mark{fill:#14161a}
+text,.mark,.screen{animation-duration:35.11s;animation-iteration-count:infinite;animation-fill-mode:both}.screen{animation-name:scroll;animation-timing-function:step-end}.screen{transform:translateY(-19px)}@media (prefers-reduced-motion:reduce){text,.mark,.screen{animation:none!important}.mark{display:none}}
+@keyframes a0{0%,11.393%{opacity:1}11.421%,12.817%{opacity:0}12.845%,100%{opacity:1}}
+@keyframes a1{0%,11.393%{opacity:1}11.421%,15.380%{opacity:0}15.409%,100%{opacity:1}}
+@keyframes m1{0%,11.393%{transform:translateX(524px)}11.421%,15.380%{transform:translateX(0)}21.461%,100%{transform:translateX(524px)}}
+@keyframes a2{0%,11.393%{opacity:1}11.421%,22.743%{opacity:0}22.771%,100%{opacity:1}}
+@keyframes a3{0%,11.393%{opacity:1}11.421%,22.999%{opacity:0}23.028%,100%{opacity:1}}
+@keyframes a5{0%,11.393%{opacity:1}11.421%,28.952%{opacity:0}28.980%,100%{opacity:1}}
+@keyframes a6{0%,11.393%{opacity:1}11.421%,31.515%{opacity:0}31.544%,100%{opacity:1}}
+@keyframes m6{0%,11.393%{transform:translateX(243px)}11.421%,31.515%{transform:translateX(0)}34.007%,100%{transform:translateX(243px)}}
+@keyframes a7{0%,11.393%{opacity:1}11.421%,35.289%{opacity:0}35.318%,100%{opacity:1}}
+@keyframes a8{0%,11.393%{opacity:1}11.421%,35.545%{opacity:0}35.574%,100%{opacity:1}}
+@keyframes a10{0%,11.393%{opacity:1}11.421%,41.498%{opacity:0}41.527%,100%{opacity:1}}
+@keyframes a11{0%,11.393%{opacity:1}11.421%,44.062%{opacity:0}44.090%,100%{opacity:1}}
+@keyframes m11{0%,11.393%{transform:translateX(243px)}11.421%,44.062%{transform:translateX(0)}46.554%,100%{transform:translateX(243px)}}
+@keyframes a12{0%,11.393%{opacity:1}11.421%,47.835%{opacity:0}47.864%,100%{opacity:1}}
+@keyframes a13{0%,11.393%{opacity:1}11.421%,48.092%{opacity:0}48.120%,100%{opacity:1}}
+@keyframes a14{0%,11.393%{opacity:1}11.421%,48.348%{opacity:0}48.377%,100%{opacity:1}}
+@keyframes a16{0%,11.393%{opacity:1}11.421%,54.301%{opacity:0}54.329%,100%{opacity:1}}
+@keyframes a17{0%,11.393%{opacity:1}11.421%,56.864%{opacity:0}56.893%,100%{opacity:1}}
+@keyframes m17{0%,11.393%{transform:translateX(391px)}11.421%,56.864%{transform:translateX(0)}61.250%,100%{transform:translateX(391px)}}
+@keyframes a18{0%,11.393%{opacity:1}11.421%,62.532%{opacity:0}62.561%,100%{opacity:1}}
+@keyframes a19{0%,11.393%{opacity:1}11.421%,62.788%{opacity:0}62.817%,100%{opacity:1}}
+@keyframes a21{0%,11.393%{opacity:1}11.421%,68.741%{opacity:0}68.770%,100%{opacity:1}}
+@keyframes a22{0%,11.393%{opacity:1}11.421%,71.304%{opacity:0}71.333%,100%{opacity:1}}
+@keyframes m22{0%,11.393%{transform:translateX(149px)}11.421%,71.304%{transform:translateX(0)}72.600%,100%{transform:translateX(149px)}}
+@keyframes a23{0%,11.393%{opacity:1}11.421%,73.882%{opacity:0}73.911%,100%{opacity:1}}
+@keyframes a24{0%,11.393%{opacity:1}11.421%,74.138%{opacity:0}74.167%,100%{opacity:1}}
+@keyframes a25{0%,11.393%{opacity:1}11.421%,74.395%{opacity:0}74.423%,100%{opacity:1}}
+@keyframes a27{0%,11.393%{opacity:1}11.421%,80.347%{opacity:0}80.376%,100%{opacity:1}}
+@keyframes scroll{0%{transform:translateY(-19px)}11.421%{transform:translateY(0)}80.347%{transform:translateY(-19px)}100%{transform:translateY(-19px)}}
+</style>
+<clipPath id="c"><rect x="0" y="32" width="750" height="529"/></clipPath>
+<rect class="bg" width="750" height="563" rx="9"/><rect class="edge" x=".5" y=".5" width="749" height="562" rx="9"/>
+<circle class="dot" cx="18" cy="17" r="5"/><circle class="dot" cx="36" cy="17" r="5"/><circle class="dot" cx="54" cy="17" r="5"/>
+<text class="title" x="375" y="21" text-anchor="middle" style="animation:none">a real session, recorded by docs/demo/record.py</text>
+<g clip-path="url(#c)"><g class="screen">
+<text x="16" y="48" style="animation-name:a0"><tspan class="say"># Four things must exist for this to be done.</tspan></text>
+<text x="16" y="67" style="animation-name:a1"><tspan class="prompt">$ </tspan><tspan class="cmd">gitdone init --rows "Sign-in, Search, Export, Reports" --hook</tspan></text>
+<rect class="mark" x="32" y="53" width="524" height="19" style="animation-name:m1;animation-timing-function:steps(61)"/>
+<text x="16" y="86" style="animation-name:a2">wrote .gitdone.json, status-table.md (4 rows) and STATUS.md</text>
+<text x="16" y="105" style="animation-name:a3">All: strict 0% (0/4), weighted 0% · next: row 1 (Sign-in)</text>
+<text x="16" y="143" style="animation-name:a5"><tspan class="say"># The agent says sign-in shipped, and names a commit from its spike branch.</tspan></text>
+<text x="16" y="162" style="animation-name:a6"><tspan class="prompt">$ </tspan><tspan class="cmd">gitdone shipped 1 705af2a</tspan></text>
+<rect class="mark" x="32" y="148" width="243" height="19" style="animation-name:m6;animation-timing-function:steps(25)"/>
+<text x="16" y="181" style="animation-name:a7"><tspan class="bad">refused, nothing changed: commit 705af2a is not on main</tspan></text>
+<text x="16" y="200" style="animation-name:a8">Still on a branch? Record it with: gitdone mark 1 built --branch NAME</text>
+<text x="16" y="238" style="animation-name:a10"><tspan class="say"># The commit that really landed:</tspan></text>
+<text x="16" y="257" style="animation-name:a11"><tspan class="prompt">$ </tspan><tspan class="cmd">gitdone shipped 1 660d81a</tspan></text>
+<rect class="mark" x="32" y="243" width="243" height="19" style="animation-name:m11;animation-timing-function:steps(25)"/>
+<text x="16" y="276" style="animation-name:a12"><tspan class="good">row 1: Not built → Live (verified: commit 660d81a is on main)</tspan></text>
+<text x="16" y="295" style="animation-name:a13">All: strict 25% (1/4), weighted 25% · next: row 2 (Search)</text>
+<text x="16" y="314" style="animation-name:a14">to commit: git add status-table.md STATUS.md</text>
+<text x="16" y="352" style="animation-name:a16"><tspan class="say"># Someone types Live into the table by hand, with nothing behind it.</tspan></text>
+<text x="16" y="371" style="animation-name:a17"><tspan class="prompt">$ </tspan><tspan class="cmd">git add -A &amp;&amp; git commit -m 'Search is live'</tspan></text>
+<rect class="mark" x="32" y="357" width="391" height="19" style="animation-name:m17;animation-timing-function:steps(44)"/>
+<text x="16" y="390" style="animation-name:a18"><tspan class="bad">FAIL row 2 names no commit, pull request or tag; run `gitdone shipped 2 &lt;commit&gt;`</tspan></text>
+<text x="16" y="409" style="animation-name:a19"><tspan class="bad">result: FAIL in --strict, evidence is missing or partly disproved</tspan></text>
+<text x="16" y="447" style="animation-name:a21"><tspan class="say"># Later, sign-in is reverted on main. The claim stops holding.</tspan></text>
+<text x="16" y="466" style="animation-name:a22"><tspan class="prompt">$ </tspan><tspan class="cmd">gitdone check</tspan></text>
+<rect class="mark" x="32" y="452" width="149" height="19" style="animation-name:m22;animation-timing-function:steps(13)"/>
+<text x="16" y="485" style="animation-name:a23"><tspan class="bad">FAIL row 1 (Live): commit 660d81a was reverted on main by 3321f15</tspan></text>
+<text x="16" y="504" style="animation-name:a24">  what is true now? gitdone mark 1 &lt;kind&gt; &lt;words&gt;, or shipped 1 &lt;the new commit&gt;</text>
+<text x="16" y="523" style="animation-name:a25"><tspan class="bad">result: FAIL, 1 contradicted or inconsistent</tspan></text>
+<text x="16" y="561" style="animation-name:a27"><tspan class="say"># Your agent says it shipped. Git decides.</tspan></text>
+</g></g>
+</svg>

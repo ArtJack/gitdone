@@ -1,0 +1,15 @@
+#!/bin/sh
+# The plugin holds no logic: this finds Python and hands everything to the engine bundled beside it, so the plugin and
+# the pre-commit gate run one engine and cannot disagree. GITDONE_HOME points it at another checkout.
+root="${GITDONE_HOME:-${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}}"
+python=$(command -v python3 || command -v python)
+if [ -z "$python" ] || [ ! -f "$root/gitdone/__main__.py" ]; then
+  why="needs python3 on PATH and the engine at $root/gitdone"
+  case " $* " in
+    *" --hook "*) echo "gitdone plugin: $why"; exit 0 ;;
+  esac
+  echo "gitdone plugin: $why" >&2
+  exit 2
+fi
+# -I keeps the folder this runs in off the import path: a repository being judged must not be able to supply the engine.
+exec "$python" -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from gitdone.cli import main; sys.exit(main())' "$root" "$@"
