@@ -13,16 +13,48 @@ DAYS = {"d": 1, "day": 1, "w": 7, "week": 7, "m": 30, "month": 30}
 UNIT = {"d": "day", "day": "day", "w": "week", "week": "week", "m": "month", "month": "month"}
 
 
-def _commits(top, rel):
-    """(commit, author date, the table's path then), newest first, following a rename. Author dates survive a rebase."""
-    done = gitio.git(top, "log", "--follow", "--format=%x01%H %as", "--name-only", "--", rel)
-    out, path = [], rel
-    for entry in done.out.split("\x01"):
-        lines = [line for line in entry.split("\n") if line.strip()]
-        if lines:
-            sha, date = lines[0].split()
-            path = lines[-1] if len(lines) > 1 else path
-            out.append((sha, date, path))
+def _is_a_day(text):
+    if not DATE.match(text):
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def table_commits(top, rel, first_parent=False, today=None):
+    """(commit, date, the table's path then), newest first, following a rename and stopping where a copy began: a table copied from another
+    project's has not lived that project's life.
+
+    A date is when the commit was written: the author's, which survives a rebase, unless the committer's is earlier, and never later than today,
+    so one wrong clock cannot carry every commit after it past the present.
+    """
+    if gitio.git(top, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
+        return []
+    args = ["--first-parent", "-m"] if first_parent else []
+    done = gitio.git(top, "log", *args, "--follow", "-z", "--name-status", "--format=%x01%H %as %cs", "--", rel, timeout=60)
+    if done.code:
+        raise PlanError(f"git could not read the history of {rel}: {done.err.strip()[:200]}")
+    latest = (today or datetime.date.today()).isoformat()
+    out, tokens, at = [], done.out.split("\0"), 0
+    while at < len(tokens):
+        head = tokens[at].lstrip("\n")
+        at += 1
+        if not head.startswith("\x01"):
+            continue
+        fields = head[1:].split()
+        if at < len(tokens) and tokens[at].lstrip("\n")[:1] in ("A", "M", "D", "T", "R", "C"):
+            status = tokens[at].lstrip("\n")
+            two_names = status[0] in "RC"
+            path = tokens[at + 2 if two_names else at + 1] if at + (2 if two_names else 1) < len(tokens) else rel
+            at += 3 if two_names else 2
+        else:
+            status, path = "", out[-1][2] if out else rel
+        dates = [d for d in fields[1:] if _is_a_day(d)]
+        out.append((fields[0], min(dates + [latest]), path))
+        if status.startswith("C"):
+            break
     return forward_dates(out)
 
 
@@ -72,7 +104,7 @@ def delta_data(plan, since=None, today=None):
         raise PlanError(f"{doc.name} is not in a git repository, so it has no history to compare")
     top = top_done.out.strip()
     rel = os.path.relpath(os.path.realpath(doc), os.path.realpath(top)).replace(os.sep, "/")
-    commits = _commits(top, rel)
+    commits = table_commits(top, rel)
     if not commits:
         raise PlanError(f"{doc.name} has no commit yet, so it has no history to compare")
     today = today or datetime.date.today()
@@ -123,7 +155,7 @@ def _focus_since(plan, since, today):
             found = focus.data(plan, days=max(days, 1), today=today)
         else:
             found = focus.data(plan, revisions=f"{since}..HEAD", today=today)
-    except (PlanError, ValueError):
+    except Exception:
         return None
     return {key: found[key] for key in ("commits", "on_plan", "upkeep", "off_plan")}
 

@@ -35,22 +35,11 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 """
 
 
-def _history(top, rel, *limits):
-    """(commit, author date, the table's path then) on the main line, newest first, following a rename."""
-    done = gitio.git(top, "log", "--first-parent", "-m", "--follow", *limits, "--format=%x01%H %as", "--name-only", "--", rel)
-    out, path = [], rel
-    for entry in done.out.split("\x01"):
-        lines = [line for line in entry.split("\n") if line.strip()]
-        if not lines:
-            continue
-        sha, date = lines[0].split()
-        path = lines[-1] if len(lines) > 1 else path
-        out.append((sha, date, path))
-    return history_module.forward_dates(out)
-
-
 def _tally(plan, text, wanted):
-    table = tables.parse(text, plan.kinds)
+    """(scope, strict, weighted) of a table as it stood, or None if it could not be read then: a broken commit says nothing about any row."""
+    table = tables.parse(text.replace("\r\n", "\n"), plan.kinds)
+    if table.problems:
+        return None
     rows = [r for d in table.domains if wanted is None or d.n in wanted for r in d.rows]
     top = plan.strict_kind.name
     return len(rows), sum(1 for r in rows if r.kind == top), sum(plan.weights.get(r.kind, 0.0) for r in rows)
@@ -64,15 +53,18 @@ def points(plan, group=None, today=None):
         raise PlanError(f"{plan.doc.name} is not in a git repository, so it has no history to chart")
     top = top_done.out.strip()
     rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top)).replace(os.sep, "/")
-    history = _history(top, rel)
+    history = history_module.table_commits(top, rel, first_parent=True, today=_day(today) if today else None)
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in history])
     by_day = {}
     for (_, date, _), text in zip(reversed(history), reversed(texts)):
-        if text is not None:
-            by_day[date] = _tally(plan, text, wanted)
+        tally = _tally(plan, text, wanted) if text is not None else None
+        if tally is not None:
+            by_day[date] = tally
     if not history or gitio.git(top, "status", "--porcelain", "--", rel).out.strip():
         today = today or datetime.date.today().isoformat()
-        by_day[today] = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)
+        tally = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)
+        if tally is not None:
+            by_day[today] = tally
     return [{"date": d, "scope": by_day[d][0], "strict": by_day[d][1], "weighted": round(by_day[d][2], 3)} for d in sorted(by_day)]
 
 
@@ -236,7 +228,7 @@ def burndown(items, title, found, words):
     first = _day(points[0]["date"])
     plot_w, plot_h = WIDTH - LEFT - BURNDOWN_RIGHT, HEIGHT - TOP - BOTTOM
     likely = _day(found["likely"]) if found.get("likely") else None
-    sure = _day(found["sure"]) if found.get("sure") else None
+    sure = _day(found["sure"]) if found.get("sure") else (likely and likely + datetime.timedelta(days=3650))  # past ten years: as far as this axis could care
     deadline = _day(found["deadline"]["date"]) if found.get("deadline") else None
     horizon = today + datetime.timedelta(days=max((today - first).days * HORIZON_FACTOR, HORIZON_DAYS))
     edge = max([today] + [min(day, horizon) for day in (likely, sure, deadline) if day])
@@ -255,7 +247,7 @@ def burndown(items, title, found, words):
 
     left_now = found["left"]
     needed = bool(deadline and today < deadline <= edge and left_now)
-    scope_words = "The steps up are scope: a row added lifts the line, and moves the date." + (" Dotted: what the deadline needs." if needed else "")
+    scope_words = "A step up is scope, marked with its size, or a row going back. Either moves the date." + (" Dotted: what the deadline needs." if needed else "")
     subtitle = "Rows left over time, from the status table's git history."
     if likely:
         subtitle += f" Dashed: a line through the last {found['window_days']} days, not a promise."
@@ -274,7 +266,7 @@ def burndown(items, title, found, words):
             anchor = "start" if i == 0 else ("end" if i == len(x_days) - 1 else "middle")
         with_year = i == 0 or day.year != x_days[i - 1].year
         out.append(f'<text class="tick" x="{x_of_day(day):.1f}" y="{TOP + plot_h + 19}" text-anchor="{anchor}">{_date_words(day, with_year)}</text>')
-    if deadline and deadline <= edge:
+    if deadline and first <= deadline <= edge:
         at = x_of_day(deadline)
         out.append(f'<line x1="{at:.1f}" x2="{at:.1f}" y1="{TOP}" y2="{TOP + plot_h}" stroke="var(--ink2)" stroke-dasharray="2 4"/>')
         out.append(f'<text class="tick" x="{at + 5:.1f}" y="{TOP + 12}">deadline</text>')
@@ -296,7 +288,11 @@ def burndown(items, title, found, words):
     said = [(f"{left_now:g}", "rows left")]
     if likely:
         said.append((_date_words(likely, likely.year != today.year), "likely"))
-        said.append((_date_words(sure, sure.year != today.year), "85% sure"))
+        if found.get("sure"):
+            said.append((_date_words(sure, sure.year != today.year), "85% sure"))
+    live = (found.get("live") or {}).get("likely")
+    if live:
+        said.append((_date_words(_day(live), _day(live).year != today.year), "Live rows alone"))
     if deadline:
         said.append((_date_words(deadline, deadline.year != today.year), "deadline"))
     for value, name in said:

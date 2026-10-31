@@ -360,7 +360,7 @@ def _init_sections(args):
             raise PlanError(f"cannot read {args.from_checklist}: {err.strerror}")
         sections = scaffold.sections_from_checklist(text)
         if not sections:
-            raise PlanError(f"{args.from_checklist} holds no `- [ ]` items")
+            raise PlanError(f"{args.from_checklist} holds no `- [ ]` items and no `REQ-1: words` lines")
         return sections
     if args.from_issues is not None:
         items = gitio.issues(args.dir, args.from_issues or None)
@@ -380,11 +380,22 @@ def _init_sections(args):
     return None
 
 
+def _source_inside(args):
+    """The checklist the rows came from stays what they answer to: when it grows and the table does not, the gate says so. Only a file of this project can be named."""
+    if not args.from_checklist:
+        return None
+    here = os.path.realpath(args.dir)
+    source = os.path.realpath(args.from_checklist)
+    if not source.startswith(here + os.sep):
+        return None
+    return [os.path.relpath(source, here).replace(os.sep, "/")]
+
+
 def cmd_init(args):
     from . import install, scaffold
     sections = _init_sections(args)
     path, in_git = scaffold.create(args.dir, title=args.title, sections=sections, table=args.table, view=args.view,
-                                   badge=scaffold.BADGE_NAME if args.badge else None)
+                                   badge=scaffold.BADGE_NAME if args.badge else None, requirements=_source_inside(args))
     plan = Plan(path)
     held_back = scaffold.hold_to_git(plan)
     table = tables.load_clean(plan)
@@ -449,7 +460,8 @@ def _write_or_print(path, text):
 
 def cmd_eta(args):
     from . import forecast
-    found = forecast.data(_plan(args), group=args.group, days=args.days)
+    plan = _plan(args)
+    found = forecast.data(plan, group=_group(plan, args.group), days=args.days)
     if args.json:
         _print_json(found)
     else:
@@ -495,9 +507,14 @@ def cmd_matrix(args):
     return 0
 
 
+def _group(plan, words):
+    """What the opener calls the whole table is a fair thing to ask for by name, when the plan has no groups of its own."""
+    return None if words and not plan.groups and words.lower() == "all" else words
+
+
 def _burndown(args, plan, items):
     from . import chart, forecast
-    found = forecast.data(plan, group=args.group)
+    found = forecast.data(plan, group=_group(plan, args.group))
     if args.json:
         _print_json({"points": items, "forecast": found})
     elif not args.out and sys.stdout.isatty():
@@ -511,8 +528,8 @@ def _burndown(args, plan, items):
 def cmd_chart(args):
     from . import chart
     plan = _plan(args)
-    items = chart.points(plan, group=args.group)
-    if args.burndown:
+    items = chart.points(plan, group=_group(plan, args.group))
+    if args.burndown and not args.csv:
         return _burndown(args, plan, items)
     if args.json:
         _print_json(items)
@@ -590,8 +607,12 @@ def cmd_install_agents(args):
 
 def cmd_install_hook(args):
     from . import install
-    for hook in install.install(_plan(args), strict=not args.lenient, focus=not args.no_focus):
+    plan = _plan(args)
+    for hook in install.install(plan, strict=not args.lenient, focus=not args.no_focus):
         print("installed", hook)
+    theirs = None if args.no_focus else install.someones_post_commit(plan)
+    if theirs:
+        print(f"left {theirs} alone, so a commit off plan will not be said. To have it said, add `gitdone focus --last` to that hook")
     return 0
 
 

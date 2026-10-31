@@ -14,7 +14,7 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <rect x=".5" y=".5" width="759" height="339" rx="8" fill="var(--surface)" stroke="var(--edge)"/>
 <text class="title" x="16" y="28">Bramble Kiosk: burn-down</text>
 <text x="16" y="47">Rows left over time, from the status table's git history. Dashed: a line through the last 28 days, not a promise.</text>
-<text x="16" y="67">The steps up are scope: a row added lifts the line, and moves the date. Dotted: what the deadline needs.</text>
+<text x="16" y="67">A step up is scope, marked with its size, or a row going back. Either moves the date. Dotted: what the deadline needs.</text>
 <line x1="44" x2="578" y1="310.0" y2="310.0" stroke="var(--axis)"/>
 <text class="tick" x="36" y="314.0" text-anchor="end">0</text>
 <line x1="44" x2="578" y1="253.5" y2="253.5" stroke="var(--grid)"/>
@@ -42,7 +42,8 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <text x="592" y="88.0"><tspan class="value">8.7</tspan> rows left</text>
 <text x="592" y="108.0"><tspan class="value">Apr 14</tspan> likely</text>
 <text x="592" y="128.0"><tspan class="value">Apr 29</tspan> 85% sure</text>
-<text x="592" y="148.0"><tspan class="value">Apr 15</tspan> deadline</text>
+<text x="592" y="148.0"><tspan class="value">Jun 23</tspan> Live rows alone</text>
+<text x="592" y="168.0"><tspan class="value">Apr 15</tspan> deadline</text>
 <rect x="44.0" y="84" width="39.9" height="226" fill="transparent"><title>2026-01-12: 11 rows left of 11</title></rect>
 <rect x="83.9" y="84" width="44.9" height="226" fill="transparent"><title>2026-01-20: 10.6 rows left of 11</title></rect>
 <rect x="128.8" y="84" width="39.9" height="226" fill="transparent"><title>2026-01-29: 9.6 rows left of 11</title></rect>

@@ -177,7 +177,7 @@ class Judging(FocusCase):
     def test_a_mixed_commit_is_judged_by_its_work(self):
         judged = self.judged("Tidy up", files={"src/z.py": "1\n", "tests/test_z.py": "1\n"})
         self.assertEqual(judged["class"], focus.OFF)
-        self.assertEqual(judged["area"], "src")
+        self.assertEqual(judged["area"], "src/z.py")
 
     def test_where_it_happened(self):
         self.assertEqual(self.judged("Change it", files={"src/logging/a/b.py": "1\n"})["area"], "src/logging")
@@ -186,7 +186,7 @@ class Judging(FocusCase):
 
 
 class Plans(FocusCase):
-    plan_keys = {"focus": {"paths": {"3": ["src/export/"], "P1": ["src/auth/*.py"]}, "upkeep": ["ops/*"]},
+    plan_keys = {"focus": {"paths": {"3": ["src/export/"], "P1": ["src/auth/*.py"]}, "upkeep": ["ops/*"], "not_upkeep": ["docs/*"]},
                  "workstreams": [{"id": "P1", "name": "Core", "rows": "1-2"}], "order": ["P1"]}
 
     def test_the_plan_can_tie_files_to_a_row(self):
@@ -201,9 +201,12 @@ class Plans(FocusCase):
         judged = self.judged("Mostly elsewhere", files={"src/export/w.py": "1\n", "src/other/a.py": "1\n2\n3\n4\n"})
         self.assertEqual(judged["class"], focus.OFF)
 
-    def test_the_plans_upkeep_replaces_the_default(self):
+    def test_the_plans_upkeep_adds_to_the_list_and_keeps_the_rest(self):
         self.assertEqual(self.judged("Touch ops", files={"ops/a.py": "1\n"})["class"], focus.UPKEEP)
-        self.assertEqual(self.judged("Change the docs site", files={"docs/a.md": "1\n"})["class"], focus.OFF)
+        self.assertEqual(self.judged("More tests", files={"tests/test_a.py": "1\n"})["class"], focus.UPKEEP)
+
+    def test_a_project_whose_product_is_its_docs_can_say_so(self):
+        self.assertEqual(self.judged("Change the docs site", files={"docs/a.html": "1\n"})["class"], focus.OFF)
 
     def test_a_misspelled_focus_key_is_refused(self):
         self.write_plan(focus={"upkep": ["x"]})
@@ -322,7 +325,7 @@ class Summing(FocusCase):
         today = datetime.date.today().isoformat()
         for i, message in enumerate(("row 1: a", "Refactor", "docs: c")):
             self.commit(message, day=today, files={f"src/x{i}.py" if i < 2 else "docs/c.md": "1\n"})
-        self.assertEqual(focus.opener_line(self.plan()), "Focus, last 14 days: 1 of 3 commits on plan, 1 off plan (src 1).")
+        self.assertEqual(focus.opener_line(self.plan()), "Focus, last 14 days: 1 of 3 commits on plan, 1 off plan (src/x1.py 1).")
 
 
 class Next(FocusCase):
@@ -404,7 +407,8 @@ class TheHook(FocusCase):
         hook.write_text("#!/bin/sh\necho mine\n")
         done = self.run_engine("install-hook")
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertNotIn("post-commit", done.stdout)
+        self.assertNotIn("installed " + str(hook), done.stdout)
+        self.assertIn("will not be said", done.stdout)
         self.assertEqual(hook.read_text(), "#!/bin/sh\necho mine\n")
 
     def test_it_can_be_left_out(self):
@@ -433,7 +437,7 @@ class Hostile(FocusCase):
     def test_a_file_name_with_odd_characters_is_read(self):
         name = "src/with space\tand tab.py"
         judged = self.judged("Odd", files={name: "1\n"})
-        self.assertEqual(judged["area"], "src")
+        self.assertEqual(judged["area"], name)
 
     def test_a_message_with_the_readers_own_separators_is_not_a_crash(self):
         path = self.repo / "a.py"

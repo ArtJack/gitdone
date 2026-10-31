@@ -214,19 +214,23 @@ def _workstream_notes(plan, notes):
     named = set(plan.order)
     for w in plan.workstreams:
         if w.get("id") not in named:
-            notes.append(Finding(f"workstream {w.get('id')} is in the plan and not in its order, so the view does not show it", []))
+            notes.append(Finding(render.one_line(f"workstream {w.get('id')} is in the plan and not in its order, so the view does not show it"), []))
 
 
 def _requirement_notes(plan, table, notes):
-    """A scope document that has moved past the table is said, and it stops nothing: it is not a claim anybody made."""
+    """A scope document that has moved past the table is said, and it stops nothing: it is not a claim anybody made. So nothing here may change the gate's answer."""
     from . import requirements
-    found = requirements.coverage(plan, table)
+    try:
+        found = requirements.coverage(plan, table)
+    except Exception as err:
+        notes.append(Finding(render.one_line(f"the requirement files could not be read: {err}"), []))
+        return
     missing = found["without"]
     for item in missing[:MOST_REQUIREMENTS_SAID]:
-        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}) has no row, so the percent leaves it out", [], f'gitdone add "{item.label()[:60]}"'))
+        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}) has no row, so the percent leaves it out", [], requirements.what_to_do(item)))
     if len(missing) > MOST_REQUIREMENTS_SAID:
         notes.append(Finding(f"and {len(missing) - MOST_REQUIREMENTS_SAID} more requirements have no row: gitdone matrix", []))
-    notes.extend(Finding(words, []) for words in found["problems"])
+    notes.extend(Finding(render.one_line(words), []) for words in found["problems"])
 
 
 def _staged_reader(root, plan_path):
@@ -329,9 +333,14 @@ def rule_changes(plan, old, moved_from=None):
             out.append(f"this changes the gate's own rules: {key} was {json.dumps(was)}, now {json.dumps(now)}")
         else:
             out.append(f"this changes the gate's own rules: {key} changed")
-    if old.get("deadline") != plan.data.get("deadline"):
-        out.append(f"the deadline moved: it was {old.get('deadline') or 'not set'}, now {plan.data.get('deadline') or 'not set'}")
     return out
+
+
+def deadline_moved(plan, old):
+    """A deadline is not a rule of the gate, and moving one is still a thing a reviewer should read."""
+    if not isinstance(old, dict) or old.get("deadline") == plan.data.get("deadline"):
+        return None
+    return render.one_line(f"the deadline moved: it was {old.get('deadline') or 'not set'}, now {plan.data.get('deadline') or 'not set'}")
 
 
 def _plan_named_by(root, rel, staged_paths):
@@ -430,7 +439,8 @@ def check_staged(plan_path, strict=False, offline=False, pointer=None):
         return [], OK
     lines, code = check(plan, strict=strict, offline=offline, staged=True)
     old, moved_from = plan_before(root, plan_path, _committed_show, pointer)
-    return lines + [f"NOTE {words}" for words in rule_changes(plan, old, moved_from)], code
+    moved = deadline_moved(plan, old)
+    return lines + [f"NOTE {words}" for words in rule_changes(plan, old, moved_from)] + ([f"NOTE {moved}"] if moved else []), code
 
 
 class Report:

@@ -22,6 +22,11 @@ def bar(p, width=20):
     return "█" * n + "░" * (width - n)
 
 
+def one_line(text):
+    """Words from a plan or a commit, for a place that is one line: a newline in them must not start a line of their own."""
+    return " ".join(str(text).split())
+
+
 def pct(p):
     n = round(p * 100)
     if p < 1 and n >= 100:  # nearly done must not read as done, nor something as nothing
@@ -312,7 +317,7 @@ def opener_data(plan, table):
         groups.append({"label": g.label, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
                        "weighted": score(rows, plan.weights)})
     w = next_workstream(plan, table) if plan.order else None
-    following = {"id": w["id"], "name": w.get("name", ""), "state": w.get("state", ""), "needs": w.get("needs", "")} if w else None
+    following = {"id": one_line(w["id"]), "name": one_line(w.get("name", "")), "state": one_line(w.get("state", "")), "needs": one_line(w.get("needs", ""))} if w else None
     if not plan.order:  # with no workstreams, the table's own order is the queue
         row = next((r for d in table.domains for r in d.rows if r.kind != plan.strict_kind.name and not r.prose), None)
         following = {"id": f"row {row.num}", "name": row.name, "state": row.kind or "", "needs": ""} if row else None
