@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 340" width="760" height="340" role="img" aria-labelledby="t d">
 <title id="t">GitDone: burn-up</title>
-<desc id="d">As of 2026-10-31: scope 43 rows, weighted 33%, strict 0%.</desc>
+<desc id="d">As of 2026-10-31: scope 43 rows, weighted 74%, strict 67%.</desc>
 <style>
 :root{--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#6f6d68;--grid:#e1e0d9;--axis:#c3c2b7;--edge:rgba(11,11,11,.10);--strict:#2a78d6;--weighted:#eb6834;--scope:#52514e}
 @media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#a3a198;--grid:#2c2c2a;--axis:#383835;--edge:rgba(255,255,255,.10);--strict:#3987e5;--weighted:#d95926;--scope:#c3c2b7}}
@@ -33,18 +33,18 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <line x1="44" x2="612" y1="84.0" y2="84.0" stroke="var(--grid)"/>
 <text class="tick" x="36" y="88.0" text-anchor="end">50</text>
 <text class="tick" x="328.0" y="329" text-anchor="middle">Oct 31, 2026</text>
-<path d="M328.0 310.0V310.0H328.0Z" fill="var(--strict)" fill-opacity=".1"/>
+<path d="M328.0 178.9V310.0H328.0Z" fill="var(--strict)" fill-opacity=".1"/>
 <path class="line" d="M328.0 115.6" stroke="var(--scope)"/>
-<path class="line" d="M328.0 244.9" stroke="var(--weighted)"/>
-<path class="line" d="M328.0 310.0" stroke="var(--strict)"/>
+<path class="line" d="M328.0 166.3" stroke="var(--weighted)"/>
+<path class="line" d="M328.0 178.9" stroke="var(--strict)"/>
 <line x1="334.0" y1="115.6" x2="622.0" y2="115.6" stroke="var(--axis)"/>
 <circle class="dot" cx="328.0" cy="115.6" r="5" fill="var(--scope)"/>
 <text x="626" y="119.6"><tspan class="value">43</tspan> rows in scope</text>
-<line x1="334.0" y1="244.9" x2="622.0" y2="244.9" stroke="var(--axis)"/>
-<circle class="dot" cx="328.0" cy="244.9" r="5" fill="var(--weighted)"/>
-<text x="626" y="248.9"><tspan class="value">33%</tspan> weighted</text>
-<line x1="334.0" y1="310.0" x2="622.0" y2="310.0" stroke="var(--axis)"/>
-<circle class="dot" cx="328.0" cy="310.0" r="5" fill="var(--strict)"/>
-<text x="626" y="314.0"><tspan class="value">0%</tspan> strict</text>
-<rect x="328.0" y="84" width="284.0" height="226" fill="transparent"><title>2026-10-31: scope 43, weighted 14.4, strict 0</title></rect>
+<line x1="334.0" y1="166.3" x2="622.0" y2="166.3" stroke="var(--axis)"/>
+<circle class="dot" cx="328.0" cy="166.3" r="5" fill="var(--weighted)"/>
+<text x="626" y="170.3"><tspan class="value">74%</tspan> weighted</text>
+<line x1="334.0" y1="178.9" x2="622.0" y2="183.3" stroke="var(--axis)"/>
+<circle class="dot" cx="328.0" cy="178.9" r="5" fill="var(--strict)"/>
+<text x="626" y="187.3"><tspan class="value">67%</tspan> strict</text>
+<rect x="328.0" y="84" width="284.0" height="226" fill="transparent"><title>2026-10-31: scope 43, weighted 31.8, strict 29</title></rect>
 </svg>
