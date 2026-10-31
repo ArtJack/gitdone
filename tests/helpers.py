@@ -38,6 +38,9 @@ IDENTITY = ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "
 
 
 # A stranger's global git config (a hooks path, signed tags) must not reach the suite, or the suite reach it.
+# Nor may the run the suite happens to be in: on a tag, GITHUB_REF_NAME is the tag, and the engine reads it. A test that wants one sets it.
+for _name in [k for k in os.environ if k.startswith("GITHUB_")]:
+    del os.environ[_name]
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 ISOLATED = ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
