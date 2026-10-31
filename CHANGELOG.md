@@ -21,7 +21,7 @@ a requirement with no row, which the opener, `check` and the Action say on every
 
 **Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. The burn-up and the view carry no forecast.
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-31)
 
 The first version meant for other people's machines.
 
@@ -77,7 +77,7 @@ for the pre-commit framework. A skill for every coding agent, `install-agents` f
 **Speed.** `check` settles a table's claims in a few git processes rather than a few per row: 546 ms down to about 100 ms on 40 rows, and a test
 pins it. Rarely used commands are imported only when asked for.
 
-**Not in it, deliberately.** No forecast. No reading of code. No runtime dependency. Windows is run in CI and not yet proven.
+**Not in it, deliberately.** No forecast. No reading of code. No runtime dependency. On Windows the suite runs in CI, with the tests that need a POSIX shell left out, so the hook is less proven there.
 
 MIT license, CI, contribution and security notes, issue templates.
 

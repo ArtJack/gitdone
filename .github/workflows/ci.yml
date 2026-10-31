@@ -9,8 +9,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
       # Correctness rules only: the comment layout in this repository is deliberate.
       - run: uvx ruff check .
 
@@ -25,16 +25,18 @@ jobs:
     # Windows has not been proven yet. Take this line out once a run has been green there.
     continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Run the suite with nothing installed
+        env:
+          PYTHONUTF8: "1"  # what a test reads back from the engine's output. test_docs holds the engine itself to naming its encoding
         run: uv run --no-project --python ${{ matrix.python }} python -m unittest discover -s tests
 
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv build
       - name: The wheel installs and runs, on the floor and with no checkout on the path
         working-directory: ${{ runner.temp }}
@@ -43,4 +45,4 @@ jobs:
           uvx --python 3.9 --from "$wheel" gitdone --version
           git init -q demo && cd demo
           uvx --python 3.9 --from "$wheel" gitdone install-skill --into .
-          test -f .claude/skills/status/SKILL.md
+          test -f .claude/skills/gitdone/SKILL.md

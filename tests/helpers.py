@@ -21,6 +21,19 @@ sys.path.insert(0, str(ROOT))
 from gitdone import cli, render, table as tables  # noqa: E402
 from gitdone.plan import Plan  # noqa: E402
 
+# A test's own files are UTF-8 with plain line ends on every machine. The engine names its encoding wherever it opens a file, and test_docs holds it to that.
+def _read_text(self, encoding="utf-8", errors=None, newline=None):
+    with open(self, encoding=encoding, errors=errors, newline=newline) as handle:
+        return handle.read()
+
+
+def _write_text(self, data, encoding="utf-8", errors=None, newline="\n"):
+    with open(self, "w", encoding=encoding, errors=errors, newline=newline) as handle:
+        return handle.write(data)
+
+
+pathlib.Path.read_text, pathlib.Path.write_text = _read_text, _write_text
+
 IDENTITY = ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false"]
 
 
@@ -47,6 +60,19 @@ def commit(repo, name, text, message="change", env=None):
     git(repo, "add", name)
     git(repo, "commit", "-q", "-m", message, env=env)
     return git(repo, "rev-parse", "HEAD")
+
+
+def delete_tree(path):
+    """Everything under a folder, including what git keeps read-only, which Windows will not delete as it stands."""
+    def again(remove, name, _):
+        os.chmod(name, stat.S_IWRITE)
+        remove(name)
+    shutil.rmtree(path, onerror=again)
+
+
+def not_on_windows(case, why):
+    if os.name == "nt":
+        case.skipTest(why)
 
 
 def needs_sh(case):

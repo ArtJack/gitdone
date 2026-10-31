@@ -43,7 +43,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # evidence needs the whole history
       - uses: ArtJack/gitdone@v0

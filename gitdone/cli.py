@@ -433,7 +433,7 @@ def cmd_init(args):
         print("  git init                                      evidence needs a repository")
     if not args.ci:
         print("  gitdone install-ci                     the gate in pull requests, which no flag can skip")
-    print(f"  git add {' '.join(_short(p) for p in plan.tracked)}")
+    print(f"  git add {' '.join(_short(p) for p in plan.tracked)}{' .github' if args.ci else ''}")
     return code
 
 
