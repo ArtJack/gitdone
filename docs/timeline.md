@@ -14,7 +14,7 @@ Likely done Jun 23 on Live rows alone, or Apr 14 with all work: a line through t
   All work    Apr 14  Apr 29    8.7 rows  0.21
 
 Scope now: 16 rows, strict 25%, weighted 46%.
-Rows moved on 6 of 28 days. 71% of that stopped short of Live.
+Rows moved on 6 of 28 days.
 Scope: 5 rows added, 0 taken out in that time.
 Deadline Apr 15: 69 days late on Live rows alone, 1 day early with all work. It needs 0.28 Live rows a day, or 0.2 of all work from here.
   Live █████░░░░░░░░░░░░░░░ 25%
@@ -35,7 +35,7 @@ parents, by the dates the commits keep, so a rebase moves nothing. A day when no
 request that changes the scope. A feature's cost in days is on the table at the moment someone decides to take it.
 
 **The range** comes from the pace's own spread. The 85% date is where 85% of futures with the same days, drawn at random, have finished: a closed form takes the sum of many days as normal, a test holds it to a
-real resampling, and so the same history on the same day always gives the same words. A pace that came in one burst gets a wide range, and the words say when one day made most of it.
+real resampling, and so the same history on the same day gives the same words. A pace that came in one burst gets a wide range, and the words say when one day made most of it.
 
 **Scope that keeps growing,** on more than one day, changes what the date means. The headline then says "if the scope stops growing", and `eta` gives the two rates: rows a day of scope against rows a day of work.
 If the scope grows as fast as the work moves, it says the work never catches up.
@@ -58,7 +58,7 @@ on the bars. The view states the deadline, because that is the plan's word. The 
 ### What it cannot tell
 
 It is a line through the past. It knows nothing about what a row costs, so it treats them alike, and a big one will surprise it. A table moved in one sitting
-makes a poor pace. Use it for the decision it can inform: cut the scope, or move the date. Do not promise it to anyone in the words of a calendar.
+makes a poor pace. A table moved and rewritten in one commit starts a new history, because that is how git sees it. Use it for the decision it can inform: cut the scope, or move the date. Do not promise it to anyone in the words of a calendar.
 
 ### The candle
 
@@ -106,7 +106,7 @@ The files: `tests/`, `test/`, `spec/`, `specs/`, `__tests__/` and the same under
 Commits that only touch the tracker do not count. A merge does not count as a commit of its own. In a repository's subfolder, with `"repo": "."`, only commits that touch that folder count: a sibling's work is not off this plan.
 
 **When it speaks.** `install-hook` adds a `post-commit` hook, which says one line after a commit that is off plan, and nothing otherwise. It cannot fail a commit: the commit has already
-happened, and a rebase is left alone. `--no-focus` takes it out, and someone's own `post-commit` keeps its place, with a word about what that means. The opener says the numbers at the start of a session, `week` says them for its span, and a pull request
+happened, and a rebase is left alone. One hook serves every tracker in a repository, and each commit is judged by the tracker its files belong to. `--no-focus` takes it out, and someone's own `post-commit` keeps its place, with a word about what that means. The opener says the numbers at the start of a session, `week` says them for its span, and a pull request
 that leaves the table alone still gets them in its run's log.
 
 **`gitdone next`** is the other half: what to work on now. An agent that starts there and names the row in its message needs no other rule.
@@ -128,8 +128,7 @@ It reads messages and file names, not code. A commit can say `row 12` and do som
 
 A traceability matrix is usually a spreadsheet somebody keeps by hand, which is why it is usually wrong. This one is read from the plan, the table and git, each time. `--out`, `--offline`, `--json`.
 
-**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, a heading or a
-table (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`), or on a line of its own with its colon; or a checklist item. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
+**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading or a table's cell (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); or a checklist item. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
 
 **A row holds a requirement** if its name or note has the id, or if it says the same words, in any order. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
 
@@ -139,7 +138,7 @@ gitdone link 7 REQ-7
 
 `link` puts the id in the row's note, where later moves keep it, and it changes no status, so it works on a row of any kind.
 
-**The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action's comment say so on every run, including a pull request that only changes the spec. It stops nothing:
+**The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
 it is not a claim anybody made. A row no requirement asks for is scope nobody asked for, or a requirement nobody wrote down.
 
 **Tests** on record are the ones that changed in a commit the row cites or a commit that names the row, and that still exist; and any test path in backticks in the row's note, if it exists. With no requirement

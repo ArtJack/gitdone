@@ -104,15 +104,10 @@ def _requirement_in(line):
 
 def sections_from_checklist(text):
     """Each heading with items under it is a domain. `[x]` is the strict kind, and `[ ]` the last kind."""
-    sections, current, heading, fence = [], None, "Scope", None
-    for line in text.splitlines():
-        opening = FENCE.match(line)
-        if opening and fence is None:
-            fence = opening.group(1)[0]
-            continue
-        if fence is not None:
-            if opening and opening.group(1)[0] == fence:
-                fence = None
+    from . import requirements
+    sections, current, heading = [], None, "Scope"
+    for _, line in requirements.lines_to_read(text):
+        if len(line) > requirements.LONGEST_LINE:
             continue
         item = CHECK_ITEM.match(line)
         from_spec = None if item else _requirement_in(line)

@@ -14,7 +14,8 @@ TABLE_HEAD = ["| # | Name | Status | Note |", "|---|---|---|---|"]
 
 
 ID_WORD = re.compile(r"[A-Z][A-Z0-9]{0,9}-\d{1,9}(?:\.\d{1,9})*")
-OLD_ROW_NUMBER = re.compile(r"^\s*\|\s*(\d{1,9})\s*\|[^|\n]*\|\s*[A-Za-z]", re.M)  # a row: its number, its name, and a status in words
+MOST_VERSIONS_READ = 1000
+LARGEST_ROW_NUMBER = 100000000  # past this, a commit message could not name it
 
 
 def resolve_kind(plan, words):
@@ -68,9 +69,10 @@ def _highest_ever(plan):
     except PlanError:
         return 0
     highest = 0
-    for text in gitio.blobs(top.out.strip(), [f"{sha}:{path}" for sha, _, path in commits]):
-        for number in OLD_ROW_NUMBER.findall(text or ""):
-            highest = max(highest, int(number))
+    for text in gitio.blobs(top.out.strip(), [f"{sha}:{path}" for sha, _, path in commits[:MOST_VERSIONS_READ]]):
+        for number in tables.parse((text or "").replace("\r\n", "\n"), plan.kinds).rows:
+            if number < LARGEST_ROW_NUMBER:
+                highest = max(highest, number)
     return highest
 
 

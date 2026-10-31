@@ -36,7 +36,7 @@ On a pull request that touches the plan, the table or the view, it:
 - says out loud when the change touches the gate's own rules: the kinds, the default branch, the repository, the evidence pattern;
 - writes the same to the job summary.
 
-A pull request that touches none of those is left alone, so a tracker's old warnings never block unrelated work, with where its commits went in the run's log and summary. Set
+A pull request that touches none of those is left alone, so a tracker's old warnings never block unrelated work, with where its commits went, and any requirement no row names, in the run's log and summary. Set
 `always: true` to judge every pull request.
 
 On a push, with `publish-branch` set (and `contents: write`), it commits `badge.svg`, `badge.json`, `burnup.svg`, `burnup.csv` and `burndown.svg` to that

@@ -135,7 +135,7 @@ Likely done Jun 23 on Live rows alone, or Apr 14 with all work: a line through t
   All work    Apr 14  Apr 29    8.7 rows  0.21
 
 Scope now: 16 rows, strict 25%, weighted 46%.
-Rows moved on 6 of 28 days. 71% of that stopped short of Live.
+Rows moved on 6 of 28 days.
 Scope: 5 rows added, 0 taken out in that time.
 Deadline Apr 15: 69 days late on Live rows alone, 1 day early with all work. It needs 0.28 Live rows a day, or 0.2 of all work from here.
   Live █████░░░░░░░░░░░░░░░ 25%

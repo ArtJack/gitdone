@@ -20,6 +20,7 @@ WINDOW = 28
 ENOUGH = 3  # days with movement before a line is drawn through them
 SURE = 1.0364  # the 85th percentile of a normal curve, in spreads from its middle
 TOO_FAR = 3650
+STATES_BEFORE_THE_WINDOW = 5  # enough to find one the table could be read in
 
 
 def _where(plan):
@@ -35,13 +36,9 @@ def _is_shallow(top):
 
 
 def _kinds(plan, text, wanted=None):
-    """{row: kind} of a table as it stood, or None if it could not be read then. A broken commit is no statement about any row, and a status
-    the plan no longer has is no statement about how far the row had got.
-    """
+    """({row: kind}, whether the table has problems) of a table as it stood. A status the plan no longer has is None: unknown, which is not the same as nothing done."""
     table = tables.parse(text.replace("\r\n", "\n"), plan.kinds)
-    if table.problems or not table.rows:
-        return None
-    return {r.num: r.kind for d in table.domains if wanted is None or d.n in wanted for r in d.rows}
+    return {r.num: r.kind for d in table.domains if wanted is None or d.n in wanted for r in d.rows}, bool(table.problems)
 
 
 def _left(plan, rows):
@@ -49,32 +46,32 @@ def _left(plan, rows):
 
 
 def table_steps(plan, start=None, today=None, wanted=None):
-    """(steps, born). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on, with
-    the table as it stood just before that. `born` is the table's first day, and None if it has no commit.
+    """(steps, born). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on. `born` is the
+    table's first day, and None if it has no commit.
 
-    What is in the window is decided by the dates the history keeps, so a rebase, which rewrites only when a commit was made, moves nothing.
+    What is in the window is decided by when each commit was written, so a rebase, which rewrites only when a commit was made, moves nothing.
     """
     top, rel = _where(plan)
     today = today or datetime.date.today()
-    commits = list(reversed(history.table_commits(top, rel, first_parent=True, today=today)))
+    commits = list(reversed(history.table_commits(top, rel, first_parent=True, today=today, forward=False)))
     if not commits:
         return [], None
     born = commits[0][1]
-    first = 0
-    if start is not None:
-        wanted_from = start.isoformat()
-        first = next((i for i, c in enumerate(commits) if c[1] >= wanted_from), len(commits))
-    read_from = max(first - 1, 0)
+    from_day = start.isoformat() if start is not None else ""
+    first = next((i for i, c in enumerate(commits) if c[1] >= from_day), len(commits))
+    read_from = max(first - STATES_BEFORE_THE_WINDOW, 0)
 
     def stop(words):
         raise PlanError(f"git could not read the table's history: {words.strip()[:200]}")
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in commits[read_from:]], failed=stop)
     before, steps = None, []
     for (sha, date, _), text in zip(commits[read_from:], texts):
-        after = _kinds(plan, text, wanted) if text is not None else None
-        if after is None:
+        if text is None:
             continue
-        if before is not None:
+        after, troubled = _kinds(plan, text, wanted)
+        if not after or (troubled and before is not None and len(after) < len(before)):
+            continue  # a table that lost rows to a broken line says nothing about them. One that still has them, with a typo or an old status, still says the rest
+        if before is not None and date >= from_day:
             steps.append((sha, date, before, after))
         before = after
     return steps, born
@@ -88,10 +85,8 @@ class Pace:
         self.today = today
         self.days = days
         self.moved = [0.0] * days
-        self.reached = [0.0] * days  # the part of `moved` that landed on the strict kind
         self.live = [0.0] * days  # rows reaching the strict kind, less rows leaving it
         self.grew = [0.0] * days
-        self.grew_live = [0.0] * days
         self.added = self.removed = 0
 
     def _take(self, offset, before, after):
@@ -101,18 +96,17 @@ class Pace:
             was, now = before[n], after[n]
             if was is None or now is None or was == now:
                 continue
-            gain = weights.get(now, 0.0) - weights.get(was, 0.0)
-            self.moved[offset] += gain
-            if now == top:
-                self.reached[offset] += gain
+            self.moved[offset] += weights.get(now, 0.0) - weights.get(was, 0.0)
             self.live[offset] += (now == top) - (was == top)
         self.grew[offset] += sum(1 - weights.get(after[n], 0.0) for n in new) - sum(1 - weights.get(before[n], 0.0) for n in gone)
-        self.grew_live[offset] += sum(after[n] != top for n in new) - sum(before[n] != top for n in gone)
         self.added += len(new)
         self.removed += len(gone)
 
     def moving_days(self):
-        return sum(1 for x in self.moved if abs(x) > 1e-9)
+        return sum(1 for x, y in zip(self.moved, self.live) if abs(x) > 1e-9 or y)
+
+    def only_backwards(self):
+        return self.moving_days() > 0 and not any(x > 1e-9 for x in self.moved) and not any(y > 0 for y in self.live)
 
     def live_days(self):
         return sum(1 for x in self.live if x)
@@ -131,12 +125,6 @@ class Pace:
         """How much of the movement one day made. A table moved in one sitting is a lumpy thing to draw a line through."""
         gains = [x for x in self.moved if x > 0]
         return max(gains) / sum(gains) if gains else 0.0
-
-    def short_of_live_share(self):
-        """How much of the forward movement stopped short of the strict kind, which nothing but a note holds up."""
-        gains = sum(x for x in self.moved if x > 0)
-        return 1 - min(sum(x for x in self.reached if x > 0) / gains, 1.0) if gains else 0.0
-
 
 def read_pace(plan, group=None, days=WINDOW, today=None):
     """The pace over the last `days` days, or over the table's life if that is shorter. None if the table has no commit at all."""
@@ -207,8 +195,9 @@ def _deadline(plan, found, born, today):
     if plan.deadline is None:
         return None
     day = datetime.date.fromisoformat(plan.deadline)
-    began = min(datetime.date.fromisoformat(plan.start or born or today.isoformat()), day)
-    whole = (day - began).days
+    known = plan.start or born
+    began = min(datetime.date.fromisoformat(known), day) if known else None
+    whole = (day - began).days if began else 0
     days_left = (day - today).days
 
     def needs(left):
@@ -216,7 +205,8 @@ def _deadline(plan, found, born, today):
 
     def late(iso):
         return (datetime.date.fromisoformat(iso) - day).days if iso else None
-    return {"date": plan.deadline, "start": began.isoformat(), "days_left": days_left, "time_used": 1.0 if whole <= 0 else min(max((today - began).days / whole, 0.0), 1.0),
+    used = None if not began else (1.0 if whole <= 0 else min(max((today - began).days / whole, 0.0), 1.0))
+    return {"date": plan.deadline, "start": began.isoformat() if began else None, "days_left": days_left, "time_used": used,
             "needs_per_day": needs(found["left"]), "needs_per_day_live": needs(found["live"]["left"]), "late_by": late(found["likely"]), "late_by_if_sure": late(found["sure"]),
             "late_by_live": late(found["live"]["likely"])}
 
@@ -245,7 +235,7 @@ def data(plan, group=None, days=WINDOW, today=None):
     top = sum(1 for r in rows if r.kind == plan.strict_kind.name)
     out = {"state": "too_little", "as_of": today.isoformat(), "rows": len(rows), "left": _left(plan, rows),
            "strict": top / len(rows) if rows else 0.0, "weighted": tables.score(rows, plan.weights), "window_days": days, "moving_days": 0,
-           "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "short_of_live_share": 0.0, "last_change": None,
+           "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "only_backwards": False, "last_change": None, "plan_problems": list(plan.signal_problems),
            "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "never_catches_up": False},
            "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": []}
     root, rel = _where(plan)
@@ -254,9 +244,9 @@ def data(plan, group=None, days=WINDOW, today=None):
     series = None
     if pace is not None:
         out.update(window_days=pace.days, moving_days=pace.moving_days(), pace_per_day=round(pace.per_day(), 3), largest_day_share=round(pace.largest_day_share(), 3),
-                   short_of_live_share=round(pace.short_of_live_share(), 3), live=_live_line(plan, rows, pace, today))
+                   only_backwards=pace.only_backwards(), live=_live_line(plan, rows, pace, today))
         out["scope"].update(added=pace.added, removed=pace.removed, per_day=round(sum(pace.grew) / pace.days, 3))
-        if pace.moving_days() >= ENOUGH and pace.per_day() > 1e-9:
+        if sum(1 for x in pace.moved if abs(x) > 1e-9) >= ENOUGH and pace.per_day() > 1e-9:
             series = pace.moved
     if shallow:
         out["state"] = "shallow"
@@ -269,6 +259,8 @@ def data(plan, group=None, days=WINDOW, today=None):
         if pace.keeps_growing():
             out["scope"]["keeps_growing"] = True
             out["scope"]["never_catches_up"] = sum(pace.net()) <= 1e-9
+    elif out["live"]["likely"] or out["live"]["too_far"]:
+        out["state"] = "dated"  # kinds of equal weight: nothing moved by the weights, and rows still reached the strict kind
     elif pace is not None and (pace.moving_days() >= ENOUGH or (pace.days >= days and not pace.moving_days())):
         out["state"] = "stalled"
     if out["state"] == "stalled":
@@ -339,6 +331,8 @@ def _both_dates(found):
     """The two answers side by side, each labelled, as the percent gives strict and weighted."""
     kind = _kind(found)
     live, likely = found["live"]["likely"], found["likely"]
+    if live and not likely:
+        return f"{_day_words(live, found['as_of'])} on {kind} rows alone"
     if live and live != likely:
         return f"{_day_words(live, found['as_of'])} on {kind} rows alone, or {_day_words(likely, found['as_of'])} with all work"
     if live:
@@ -350,7 +344,7 @@ def headline(found):
     """The one thing `eta` is asked."""
     state, days = found["state"], found["window_days"]
     if state == "dated":
-        if found["too_far"]:
+        if found["too_far"] or (found["live"]["too_far"] and not found["likely"]):
             return f"At the pace of the last {_plural(days, 'day')}, this is more than ten years away. That is a line, not a promise."
         condition = " if the scope stops growing" if found["scope"]["keeps_growing"] else ""
         return f"Likely done {_both_dates(found)}{condition}: a line through the last {_plural(days, 'day')}, not a promise."
@@ -364,6 +358,8 @@ def headline(found):
     if state == "shallow":
         return "No date: this clone is shallow, so the table's history is cut off. `git fetch --unshallow` brings it back."
     if state == "stalled":
+        if found["only_backwards"]:
+            return f"No date: rows moved on {found['moving_days']} of the last {_plural(days, 'day')}, and only backwards."
         if found["moving_days"]:
             return f"No date: rows moved on {found['moving_days']} of the last {_plural(days, 'day')}, and went back as far as they came."
         since = f" The table last changed {found['last_change']}." if found["last_change"] else ""
@@ -390,15 +386,19 @@ def _date_table(found):
     rows = []
     if live["left"]:
         if live["likely"]:
-            rows.append((f"{kind} alone" if not same else f"{kind} rows", day(live["likely"]), day(live["sure"]), f"{_rows_words(live['left'])} rows", _pace_words(live["pace_per_day"])))
+            rows.append((f"{kind} rows" if same else f"{kind} alone", day(live["likely"]), day(live["sure"]), f"{_rows_words(live['left'])} rows", _pace_words(live["pace_per_day"])))
         else:
             rows.append((f"{kind} alone", _no_live_date(found), None, None, None))
     if not same:
-        rows.append(("All work", day(found["likely"]), day(found["sure"]), f"{_rows_words(found['left'])} rows", _pace_words(found["pace_per_day"])))
+        if found["likely"]:
+            rows.append(("All work", day(found["likely"]), day(found["sure"]), f"{_rows_words(found['left'])} rows", _pace_words(found["pace_per_day"])))
+        else:
+            rows.append(("All work", "no date: nothing moved by the weights", None, None, None))
+    heads = ("", "Likely", "85% sure", "Left", "A day")
     full = [r for r in rows if r[2] is not None]
-    widths = [max([len(r[i]) for r in full] + [len(head)]) for i, head in enumerate(("", "Likely", "85% sure", "Left", "A day"))] if full else [0] * 5
+    widths = [max([len(r[i]) for r in full] + [len(head)]) for i, head in enumerate(heads)]
     widths[0] = max(len(r[0]) for r in rows)
-    L = ["  " + "  ".join(head.ljust(width) for head, width in zip(("", "Likely", "85% sure", "Left", "A day"), widths)).rstrip()]
+    L = ["  " + "  ".join(head.ljust(width) for head, width in zip(heads, widths)).rstrip()] if full else []
     for r in rows:
         if r[2] is None:
             L.append(f"  {r[0].ljust(widths[0])}  {r[1]}")
@@ -423,7 +423,7 @@ def opener_line(plan, today=None):
     """One line for whoever opens the project; None if there is nothing worth a line yet."""
     found = data(plan, today=today)
     parts = []
-    if found["state"] == "dated" and not found["too_far"]:
+    if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]):
         parts.append(f"Likely done {_both_dates(found)}, at the last {_plural(found['window_days'], 'day')}' pace.")
     elif found["state"] in ("dated", "stalled", "shallow"):
         parts.append(headline(found))
@@ -438,15 +438,13 @@ def opener_line(plan, today=None):
 
 def text(found):
     L = [headline(found)]
-    if found["state"] == "dated" and not found["too_far"]:
+    if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]):
         L += [""] + _date_table(found) + [""]
     if found["rows"]:
         L.append(f"Scope now: {_plural(found['rows'], 'row')}, strict {render.pct(found['strict'])}, weighted {render.pct(found['weighted'])}.")
     if found["state"] != "shallow" and found["moving_days"]:
         words = f"Rows moved on {found['moving_days']} of {_plural(found['window_days'], 'day')}."
         if found["state"] == "dated":
-            if found["short_of_live_share"] > 0:
-                words += f" {render.pct(found['short_of_live_share'])} of that stopped short of {_kind(found)}."
             if found["largest_day_share"] > 0.5:
                 words += f" One day made {render.pct(found['largest_day_share'])} of it, so read the dates loosely."
         L.append(words)
@@ -458,7 +456,8 @@ def text(found):
         L.append(_deadline_words(found))
         L.append(f"  {_kind(found)[:4]:<4} {render.bar(found['strict'])} {render.pct(found['strict'])}")
         L.append(f"  Work {render.bar(found['weighted'])} {render.pct(found['weighted'])}")
-        L.append(f"  Time {render.bar(d['time_used'])} {render.pct(d['time_used'])}, {_day_words(d['start'], found['as_of'])} to {_day_words(d['date'], found['as_of'])}")
+        if d["time_used"] is not None:
+            L.append(f"  Time {render.bar(d['time_used'])} {render.pct(d['time_used'])}, {_day_words(d['start'], found['as_of'])} to {_day_words(d['date'], found['as_of'])}")
     if any(w["left"] for w in found["workstreams"]):
         L += ["", "In the plan's order, with all work:"]
         names = [render.one_line(f"{w['id'] or ''} {w['name']}") for w in found["workstreams"]]
@@ -473,6 +472,7 @@ def text(found):
             else:
                 when = f"{_rows_words(w['left'])} left"
             L.append(f"  {name:<{width}}  {when}")
+    L += [f"⚠ {render.one_line(words)}" for words in found["plan_problems"]]
     return "\n".join(L)
 
 
@@ -516,11 +516,11 @@ def against(plan, base, today=None):
     """What a change did to the scope, against a base commit: for a reviewer, who is deciding whether a feature is worth its days."""
     today = today or datetime.date.today()
     top, rel = _where(plan)
-    then = gitio.git(top, "show", f"{base}:{rel}")
-    if then.code:
+    then = history.table_text_at(top, rel, history.table_commits(top, rel, first_parent=True, today=today), base)
+    if then is None:
         return None
-    before = _kinds(plan, then.out)
-    if before is None:
+    before = _kinds(plan, then)[0]
+    if not before:
         return None
     table = tables.load_clean(plan)
     now = {r.num: r.kind for d in table.domains for r in d.rows}

@@ -1,4 +1,4 @@
-"""`chart`: a picture from the status table's git history. One self-contained SVG, and the same history gives the same bytes.
+"""`chart`: a picture from the status table's git history. One self-contained SVG, and the same history on the same day gives the same bytes.
 
 The burn-up has three lines on one axis, in rows: the scope, what is weighted done, what is strictly done. It is the record, so it makes no
 forecast. The burn-down is the candle: what is left over time, up when the scope grew, with `eta`'s line through it, labelled as a line.
@@ -36,13 +36,11 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 
 
 def _tally(plan, text, wanted):
-    """(scope, strict, weighted) of a table as it stood, or None if it could not be read then: a broken commit says nothing about any row."""
+    """(scope, strict, weighted, whether the table has problems) of a table as it stood."""
     table = tables.parse(text.replace("\r\n", "\n"), plan.kinds)
-    if table.problems:
-        return None
     rows = [r for d in table.domains if wanted is None or d.n in wanted for r in d.rows]
     top = plan.strict_kind.name
-    return len(rows), sum(1 for r in rows if r.kind == top), sum(plan.weights.get(r.kind, 0.0) for r in rows)
+    return len(rows), sum(1 for r in rows if r.kind == top), sum(plan.weights.get(r.kind, 0.0) for r in rows), bool(table.problems)
 
 
 def points(plan, group=None, today=None):
@@ -55,16 +53,15 @@ def points(plan, group=None, today=None):
     rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top)).replace(os.sep, "/")
     history = history_module.table_commits(top, rel, first_parent=True, today=_day(today) if today else None)
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in history])
-    by_day = {}
+    by_day, scope_before = {}, None
     for (_, date, _), text in zip(reversed(history), reversed(texts)):
         tally = _tally(plan, text, wanted) if text is not None else None
-        if tally is not None:
-            by_day[date] = tally
+        if tally is None or (tally[3] and scope_before is not None and tally[0] < scope_before):
+            continue  # a table that lost rows to a broken line says nothing about them
+        by_day[date], scope_before = tally[:3], tally[0]
     if not history or gitio.git(top, "status", "--porcelain", "--", rel).out.strip():
         today = today or datetime.date.today().isoformat()
-        tally = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)
-        if tally is not None:
-            by_day[today] = tally
+        by_day[today] = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)[:3]
     return [{"date": d, "scope": by_day[d][0], "strict": by_day[d][1], "weighted": round(by_day[d][2], 3)} for d in sorted(by_day)]
 
 

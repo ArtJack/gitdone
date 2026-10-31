@@ -4,7 +4,7 @@ JSON. Only `status_doc` is required. `init` writes it as `.gitdone.json` at the 
 completion from [the schema](../schema/plan.schema.json). Paths are relative to the plan file, and `~` is the home directory.
 
 The plan sets the gate's rules, so it is read strictly: a key given twice is refused, and so are an unknown key in a kind and a key nearly named like a rule (`default_brnach`,
-`DEFAULT_BRANCH`). Keys of your own are fine, including one like `repos` when a section reads it. The first kind must have `"evidence": "release"`, and a plan has at least two kinds. The plan, the table and the view are real, regular files,
+`DEFAULT_BRANCH`). Keys of your own are fine, including one like `repos` when a section reads it. What only `eta`, `focus` and `matrix` read (`deadline`, `start`, `requirements`, `focus`) cannot stop a commit: a mistake there is left out and said as a note. The first kind must have `"evidence": "release"`, and a plan has at least two kinds. The plan, the table and the view are real, regular files,
 not symbolic links, and three different files. A plan never writes outside its own repository, or its own folder when it is in none, and never into `.git`. A view replaces a view or a file git holds as it stands: any other file already at
 that path, or one with uncommitted work in it, is left alone, because nothing could bring it back.
 

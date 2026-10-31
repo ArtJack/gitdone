@@ -165,7 +165,7 @@ class TheLine(HistoryCase):
         self.commit("2026-02-01", "first")
         self.move(1, "Partial", "2026-02-05")
         self.move(2, "Partial", "2026-02-10")
-        self.move(3, "Partial", "2026-03-09")
+        self.move(3, "Partial", "2026-03-02")
         self.assertEqual(self.data()["moving_days"], 3)
 
     def test_a_window_too_small_is_refused(self):
@@ -329,16 +329,16 @@ class Deadline(HistoryCase):
         self.steady(4)
         self.assertEqual(self.data()["deadline"]["start"], "2026-01-01")
 
-    def test_a_malformed_deadline_is_refused_by_the_plan(self):
+    def test_a_malformed_deadline_is_said_and_stops_nothing(self):
         for bad in ("next week", "2026-13-01", "20261201", 5):
             self.write_plan(deadline=bad)
-            with self.assertRaises(PlanError):
-                self.plan()
+            plan = self.plan()
+            self.assertIsNone(plan.deadline)
+            self.assertIn("deadline", plan.signal_problems[0])
 
-    def test_a_misspelled_deadline_is_refused(self):
+    def test_a_misspelled_deadline_is_said_and_stops_nothing(self):
         self.write_plan(deadlin="2026-04-01")
-        with self.assertRaisesRegex(PlanError, "deadline"):
-            self.plan()
+        self.assertIn("'deadline'", self.plan().signal_problems[0])
 
 
 class Workstreams(HistoryCase):
