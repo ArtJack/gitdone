@@ -304,8 +304,9 @@ def splice_counts(text, table_md):
 
 
 def next_workstream(plan, table):
+    """The first with something in it to do. One with no rows is not finished, and it is only next when nothing else is."""
     left = _unfinished(plan, table)
-    return left[0] if left else None
+    return next((w for w in left if workstream_rows(w, table)), left[0] if left else None)
 
 
 def opener_data(plan, table):
@@ -327,7 +328,7 @@ def opener_data(plan, table):
 def opener(plan, table):
     """One line: strict and weighted per group, the next workstream in order, what it needs."""
     data = opener_data(plan, table)
-    parts = [f"{g['label']}: strict {pct(g['strict'])} ({g['strict_rows']}/{g['rows']}), weighted {pct(g['weighted'])}" for g in data["groups"]]
+    parts = [f"{one_line(g['label'])}: strict {pct(g['strict'])} ({g['strict_rows']}/{g['rows']}), weighted {pct(g['weighted'])}" for g in data["groups"]]
     if data["all_workstreams_done"]:
         parts.append(f"every workstream is fully {plan.strict_kind.phrase}")
     elif data["next"]:

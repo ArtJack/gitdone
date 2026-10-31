@@ -62,19 +62,7 @@ def touched(plan, base):
     if done.code:
         return True
     names = {os.path.realpath(os.path.join(top.out.strip(), p)) for p in done.out.split("\0") if p}
-    watched = {os.path.realpath(p) for p in plan.tracked} | _requirement_files(plan)
-    return bool(names & watched) or any(os.path.basename(n) == POINTER for n in names)
-
-
-def _requirement_files(plan):
-    """A pull request that changes what was asked for has changed what the percent means, so it is judged."""
-    out = set()
-    for name in plan.requirements:
-        try:
-            out.add(os.path.realpath(plan._path(name)))
-        except (OSError, ValueError, RuntimeError):
-            continue
-    return out
+    return bool(names & {os.path.realpath(p) for p in plan.tracked}) or any(os.path.basename(n) == POINTER for n in names)
 
 
 def _plan_at(plan, base):
@@ -107,8 +95,11 @@ def summary(plan, table, report, base=None, branch=None):
     if base:
         try:
             L += [f"Against `{branch or 'the base'}`: {history.delta(plan, since=base)}", ""]
-        except PlanError:
-            L += [f"The status table is new against `{branch or 'the base'}`.", ""]
+        except PlanError as err:
+            if "could not read" in str(err):
+                L += [f"git could not read the table's history against `{branch or 'the base'}`.", ""]
+            else:
+                L += [f"The status table is new against `{branch or 'the base'}`.", ""]
     if data["next"]:
         needs = f" Needs {data['next']['needs']}." if data["next"]["needs"] else ""
         L += [f"Next: **{data['next']['id']}** {data['next']['name']}.{needs}", ""]
@@ -238,17 +229,22 @@ def _append(env_name, text):
 
 
 def _say_focus(plan, base):
-    """A pull request that leaves the table alone gets no comment. Where its commits went still goes in the run's log and summary."""
-    from . import focus
-    if not evidence.SAFE_REF.match(str(base)):
-        return
+    """A pull request that leaves the table alone gets no comment and is not judged. Where its commits went, and a requirement no row names, still go in the run's log and summary."""
+    from . import focus, requirements
+    said = []
     try:
-        words = focus.counts_words(focus.data(plan, revisions=f"{base}..HEAD"))
+        if evidence.SAFE_REF.match(str(base)):
+            said.append(focus.counts_words(focus.data(plan, revisions=f"{base}..HEAD")))
+        if plan.requirements:
+            without = requirements.coverage(plan, tables.load_clean(plan))["without"]
+            if without:
+                said.append(f"{len(without)} requirements no row names, the first at {render.one_line(without[0].where())}.")
     except Exception:  # a favour, and the gate's exit code still decides
-        return
-    if words:
-        print(f"gitdone: {words}")
-        _append("GITHUB_STEP_SUMMARY", f"gitdone. {words}\n")
+        pass
+    for words in said:
+        if words:
+            print(f"gitdone: {words}")
+            _append("GITHUB_STEP_SUMMARY", f"gitdone. {words}\n")
 
 
 def run(plan, strict=False, comment=True, base=None, publish_branch=None, always=False):

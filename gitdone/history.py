@@ -23,12 +23,13 @@ def _is_a_day(text):
     return True
 
 
-def table_commits(top, rel, first_parent=False, today=None):
+def table_commits(top, rel, first_parent=False, today=None, forward=True):
     """(commit, date, the table's path then), newest first, following a rename and stopping where a copy began: a table copied from another
     project's has not lived that project's life.
 
-    A date is when the commit was written: the author's, which survives a rebase, unless the committer's is earlier, and never later than today,
-    so one wrong clock cannot carry every commit after it past the present.
+    A date is when the commit was written, by the author's clock, which survives a rebase. A date past today is a wrong clock: the committer's is used instead,
+    and with both wrong the commit has no date of its own, so that it cannot carry every commit after it along. `forward` makes the dates run in history's order, for
+    what asks how the table stood on a day; without it each commit keeps its own, for what asks when the work was done.
     """
     if gitio.git(top, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
         return []
@@ -36,7 +37,9 @@ def table_commits(top, rel, first_parent=False, today=None):
     done = gitio.git(top, "log", *args, "--follow", "-z", "--name-status", "--format=%x01%H %as %cs", "--", rel, timeout=60)
     if done.code:
         raise PlanError(f"git could not read the history of {rel}: {done.err.strip()[:200]}")
-    latest = (today or datetime.date.today()).isoformat()
+    today = today or datetime.date.today()
+    latest = today.isoformat()
+    tomorrow = (today + datetime.timedelta(days=1)).isoformat()  # the author's clock may simply be east of this one
     out, tokens, at = [], done.out.split("\0"), 0
     while at < len(tokens):
         head = tokens[at].lstrip("\n")
@@ -47,15 +50,39 @@ def table_commits(top, rel, first_parent=False, today=None):
         if at < len(tokens) and tokens[at].lstrip("\n")[:1] in ("A", "M", "D", "T", "R", "C"):
             status = tokens[at].lstrip("\n")
             two_names = status[0] in "RC"
+            source = tokens[at + 1] if at + 1 < len(tokens) else rel
             path = tokens[at + 2 if two_names else at + 1] if at + (2 if two_names else 1) < len(tokens) else rel
             at += 3 if two_names else 2
         else:
-            status, path = "", out[-1][2] if out else rel
-        dates = [d for d in fields[1:] if _is_a_day(d)]
-        out.append((fields[0], min(dates + [latest]), path))
-        if status.startswith("C"):
-            break
-    return forward_dates(out)
+            status, source, path = "", rel, out[-1][2] if out else rel
+        date = next((d for d in fields[1:] if _is_a_day(d) and d <= tomorrow), "")
+        out.append((fields[0], min(date, latest) if date else "", path))
+        if status.startswith("C") and gitio.git(top, "cat-file", "-e", f"HEAD:{source}").code == 0:
+            break  # copied from a table that still lives its own life. One moved in two steps has none left, and this one goes on
+    dated = forward_dates(out)
+    known = next((entry[1] for entry in reversed(dated) if entry[1]), latest)
+    dated = [(sha, date or known, path) for sha, date, path in dated]
+    return dated if forward else [(sha, raw or kept, path) for (sha, raw, path), (_, kept, _) in zip(out, dated)]
+
+
+def table_text_at(top, rel, commits, commit):
+    """The table as a commit held it. A commit that deleted it holds the last state before that, and one from before a rename holds it under its old name."""
+    done = gitio.git(top, "show", f"{commit}:{rel}")
+    if done.code == 0:
+        return done.out
+    paths = {path for _, _, path in commits}
+    for path in sorted(paths):
+        done = gitio.git(top, "show", f"{commit}:{path}")
+        if done.code == 0:
+            return done.out
+    older = False
+    for sha, _, path in commits:
+        if older or sha == commit:
+            older = True
+            done = gitio.git(top, "show", f"{sha}:{path}")
+            if done.code == 0:
+                return done.out
+    return None
 
 
 def forward_dates(commits):
@@ -115,15 +142,10 @@ def delta_data(plan, since=None, today=None):
         base = commits[-1][0]
     known = {sha: (date, path) for sha, date, path in commits}
     stamp = known[base][0] if base in known else gitio.git(top, "log", "-1", "--format=%as", base).out.strip()
-    then_text = gitio.git(top, "show", f"{base}:{known[base][1] if base in known else rel}")
-    if then_text.code and base not in known:  # the commit did not touch the table: its path then is its nearest ancestor's
-        for sha, _, path in commits:
-            if gitio.git(top, "merge-base", "--is-ancestor", sha, base).code == 0:
-                then_text = gitio.git(top, "show", f"{base}:{path}")
-                break
-    if then_text.code:
+    then_text = table_text_at(top, rel, commits, base)
+    if then_text is None:
         raise PlanError(f"week: {rel} is not in commit {base[:7]}")
-    then = tables.parse(then_text.out, plan.kinds)
+    then = tables.parse(then_text, plan.kinds)
     now = tables.load_clean(plan)
     moved = _moved(then, now)
     went, stayed = _workstreams(plan, moved)
@@ -198,7 +220,7 @@ def _percentages(plan, group, then, now):
 
 
 def _group_words(g):
-    return (f"{g['label']} strict {g['strict_rows_then']}→{g['strict_rows_now']} of {g['rows']} "
+    return (f"{render.one_line(g['label'])} strict {g['strict_rows_then']}→{g['strict_rows_now']} of {g['rows']} "
             f"({render.pct(g['strict_then'])}→{render.pct(g['strict_now'])}), "
             f"weighted {render.pct(g['weighted_then'])}→{render.pct(g['weighted_now'])}")
 
@@ -232,9 +254,9 @@ def _workstreams(plan, moved):
 def _workstream_words(went, stayed):
     words = []
     if went:
-        words.append("workstreams moved: " + ", ".join(went))
+        words.append("workstreams moved: " + render.one_line(", ".join(went)))
     if stayed:
-        words.append("not moved: " + ", ".join(stayed))
+        words.append("not moved: " + render.one_line(", ".join(stayed)))
     if not words:
         return ""
     return " " + words[0][0].upper() + "; ".join(words)[1:] + "."

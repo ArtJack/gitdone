@@ -208,17 +208,16 @@ class Plans(FocusCase):
     def test_a_project_whose_product_is_its_docs_can_say_so(self):
         self.assertEqual(self.judged("Change the docs site", files={"docs/a.html": "1\n"})["class"], focus.OFF)
 
-    def test_a_misspelled_focus_key_is_refused(self):
+    def test_a_misspelled_focus_key_is_said(self):
         self.write_plan(focus={"upkep": ["x"]})
-        with self.assertRaisesRegex(PlanError, "upkep"):
-            self.plan()
+        self.assertIn("upkep", self.plan().signal_problems[0])
 
-    def test_nonsense_in_the_plan_says_so(self):
-        for bad in ({"paths": "x"}, {"paths": {"3": "src"}}, {"upkeep": "docs"}, {"paths": {"not a row": ["x"]}}):
+    def test_nonsense_in_the_plan_is_said_and_stops_nothing(self):
+        for bad in ("x", {"paths": "x"}, {"paths": {"3": "src"}}, {"upkeep": "docs"}, {"paths": {"not a row": ["x"]}}):
             with self.subTest(bad):
                 self.write_plan(focus=bad)
-                with self.assertRaises(PlanError):
-                    self.data()
+                self.assertTrue(self.plan().signal_problems)
+                self.assertIsInstance(self.data()["commits"], int)
 
 
 class Merges(FocusCase):

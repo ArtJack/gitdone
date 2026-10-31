@@ -107,10 +107,13 @@ def _hook_text(plan, root, strict=True):
 
 
 def _focus_text(plan, root):
-    # A plan inside the repository is named from the top, so a linked worktree's hook reads that worktree's plan, and a tracker in a subfolder is found.
-    plan_rel = _inside(plan.path, root)
-    plan_line = "plan=" + ('"$top"/' + shlex.quote(plan_rel) if plan_rel else shlex.quote(str(plan.path)))
-    return FOCUS_TEMPLATE.format(mark=MARK, home=shlex.quote(str(HOME)), python=shlex.quote(sys.executable), plan_line=plan_line, focus='focus --last --plan "$plan"', launch=LAUNCH)
+    if _found_from_commit(plan, root):
+        plan_line, focus = "# The plans come from the files a commit changes, so this one hook serves every tracker in the repository.", "focus --last"
+    else:
+        plan_rel = _inside(plan.path, root)
+        plan_line = "plan=" + ('"$top"/' + shlex.quote(plan_rel) if plan_rel else shlex.quote(str(plan.path)))
+        focus = 'focus --last --plan "$plan"'
+    return FOCUS_TEMPLATE.format(mark=MARK, home=shlex.quote(str(HOME)), python=shlex.quote(sys.executable), plan_line=plan_line, focus=focus, launch=LAUNCH)
 
 
 def is_ours(text):

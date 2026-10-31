@@ -528,6 +528,7 @@ def report(plan, strict=False, offline=False, staged=False):
     _workstream_notes(plan, out.notes)
     if plan.requirements:
         _requirement_notes(plan, table, out.notes)
+    out.notes.extend(Finding(render.one_line(words), []) for words in plan.signal_problems)
     note = verdict.annotate(plan)
     if note:
         out.verdict = note.line

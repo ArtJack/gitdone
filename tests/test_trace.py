@@ -8,7 +8,7 @@ import unittest
 from helpers import git, needs_sh
 
 from gitdone import gate, requirements, table as tables, trace
-from gitdone.plan import Plan, PlanError
+from gitdone.plan import Plan
 
 
 class Parsing(unittest.TestCase):
@@ -16,7 +16,7 @@ class Parsing(unittest.TestCase):
         return [(i.ident, i.words, i.line) for i in requirements.parse(text, "spec.md")]
 
     def test_the_shapes_a_spec_is_written_in(self):
-        text = "\n".join(["# Spec", "", "- REQ-1: one", "- **REQ-2**: two", "1. REQ-3 three", "### FR-4 four", "| US-5 | five | high |", "**AC-6.** six", "`NFR-7`: seven",
+        text = "\n".join(["# Spec", "", "- REQ-1: one", "- **REQ-2**: two", "1. REQ-3: three", "### FR-4 four", "| US-5 | five | high |", "**AC-6.** six", "`NFR-7`: seven",
                           "- [ ] REQ-8 eight", "- [x] REQ-9.1: nine"])
         self.assertEqual([i[0] for i in self.items(text)], ["REQ-1", "REQ-2", "REQ-3", "FR-4", "US-5", "AC-6", "NFR-7", "REQ-8", "REQ-9.1"])
         self.assertEqual([i[1] for i in self.items(text)], ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine"])
@@ -150,13 +150,12 @@ class Coverage(RequirementCase):
         self.write_plan(requirements=["docs/link.md"])
         self.assertEqual(self.coverage()["items"], [])
 
-    def test_the_plan_must_name_files(self):
-        self.write_plan(requirements=[5])
-        with self.assertRaises(PlanError):
-            self.plan()
-        self.write_plan(requirements="docs/spec.md")
-        with self.assertRaises(PlanError):
-            self.plan()
+    def test_something_else_than_files_is_said_and_stops_nothing(self):
+        for bad in ([5], "docs/spec.md"):
+            self.write_plan(requirements=bad)
+            plan = self.plan()
+            self.assertEqual(plan.requirements, [])
+            self.assertIn("requirements", plan.signal_problems[0])
 
 
 class Gate(RequirementCase):

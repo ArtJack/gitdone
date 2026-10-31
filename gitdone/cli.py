@@ -3,12 +3,14 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 
 from . import __version__, discover, gate, render, shipped, table as tables, verdict
 from .plan import Plan, PlanError, read_file
 
 # The commands a hook or a session starts run on every commit and session, so the rest is imported when it is asked for.
+STARTS_A_COMMAND = re.compile(r"(?m)^(\s*)::")
 
 
 def _plan(args):
@@ -393,7 +395,7 @@ def _source_inside(args):
     """A spec the rows came from stays what they answer to: when it grows and the table does not, the gate says so. A file of this project only, and one with ids:
     a living to-do list is not a list of requirements, and every ordinary task on it would read as a gap.
     """
-    from . import requirements
+    from . import gitio, requirements
     if not args.from_checklist:
         return None
     try:
@@ -404,7 +406,9 @@ def _source_inside(args):
         return None
     here = os.path.realpath(args.dir)
     source = os.path.realpath(args.from_checklist)
-    if not source.startswith(here + os.sep):
+    top = gitio.git(here, "rev-parse", "--show-toplevel")
+    inside = os.path.realpath(top.out.strip()) if top.code == 0 and top.out.strip() else here
+    if not source.startswith(inside + os.sep):
         return None
     return [os.path.relpath(source, here).replace(os.sep, "/")]
 
@@ -491,11 +495,12 @@ def cmd_focus(args):
     from . import focus
     if args.last:
         try:  # a post-commit hook: the commit has already happened, so nothing here may be noisy about itself
-            line = focus.last_line(_plan(args))
+            lines = [focus.last_line(Plan(args.plan))] if args.plan else focus.last_lines()
+            for line in lines:
+                if line:
+                    print(line)
         except Exception:
-            return 0
-        if line:
-            print(line)
+            pass
         return 0
     found = focus.data(_plan(args), days=args.days)
     if args.json:
@@ -778,6 +783,19 @@ def _parser():
     return parser
 
 
+class _NoCommands:
+    """Where the output may be a workflow's log. Only `gitdone ci` speaks to the runner, and a plan's words that reach the start of a line cannot."""
+
+    def __init__(self, stream):
+        self._stream = stream
+
+    def write(self, text):
+        return self._stream.write(STARTS_A_COMMAND.sub(r"\1: :", text))
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
 class _Terminal:
     """A person's terminal. Words from a table reach it as they are written, so an escape sequence is shown and not obeyed. A pipe gets the bytes."""
 
@@ -794,15 +812,19 @@ class _Terminal:
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")  # a plan's words can hold what no encoding can
     if sys.stdout is not None and sys.stdout.isatty():  # None: the stream was closed before this started
         sys.stdout = _Terminal(sys.stdout)
     if sys.stderr is not None and sys.stderr.isatty():
         sys.stderr = _Terminal(sys.stderr)
+    if sys.stderr is not None:
+        sys.stderr = _NoCommands(sys.stderr)
     args = argparse.Namespace()
     try:
         parser = _parser()
         args = parser.parse_args(argv)
+        if args.command != "ci" and sys.stdout is not None:
+            sys.stdout = _NoCommands(sys.stdout)
         if args.json and args.command and args.command not in parser.json_commands:
             parser.error(f"--json does not go with {args.command}")
         code = args.func(args)

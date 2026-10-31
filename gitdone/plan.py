@@ -62,6 +62,7 @@ def _typed(data, key, expected, default):
 
 KIND_KEYS = {"name", "short", "phrase", "weight", "evidence"}
 FOCUS_KEYS = {"paths", "upkeep", "not_upkeep"}
+SIGNAL_KEYS = ("deadline", "start", "requirements", "focus")  # what only `eta`, `focus` and `matrix` read. A mistake here is said, and it stops no commit
 
 
 def _no_duplicates(pairs):
@@ -105,37 +106,27 @@ def _text(data, key, default=None):
     return value
 
 
-def _date(data, key):
-    """A day a plan names, as YYYY-MM-DD. Anything else would surface far from the plan, in the middle of somebody's morning."""
-    value = _text(data, key)
-    if value is None:
-        return None
+def _a_day(value):
     try:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):  # newer Pythons read more shapes than the oldest one here
-            raise ValueError
-        return datetime.date.fromisoformat(value).isoformat()
+        if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):  # newer Pythons read more shapes than the oldest one here
+            return datetime.date.fromisoformat(value).isoformat()
     except ValueError:
-        raise PlanError(f"{key}: expected a date like 2026-12-01, got {value!r}")
+        pass
+    return None
 
 
-def _strings(data, key):
-    value = _typed(data, key, list, [])
-    for item in value:
-        if not isinstance(item, str):
-            raise PlanError(f"{key}: expected a list of file names, got {item!r}")
-    return value
-
-
-def _no_misspelled_rules(data):
+def _no_misspelled_rules(data, problems):
     """A plan may carry keys of its own for its sections. One no section reads that is nearly a rule's name is a rule being ignored in silence."""
-    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state", "deadline", "requirements", "focus", "start")}
+    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state", *SIGNAL_KEYS)}
     sections = data.get("sections")
     used = {s["from"] for s in sections if isinstance(s, dict) and isinstance(s.get("from"), str)} if isinstance(sections, list) else set()
     for key in data:
         if key in rules.values() or key in used:
             continue
         close = difflib.get_close_matches(re.sub(r"[-_ ]", "", key.lower()), rules, n=1, cutoff=0.85)
-        if close:
+        if close and rules[close[0]] in SIGNAL_KEYS:
+            problems.append(f"the plan has {key!r}. Did you mean {rules[close[0]]!r}? As written, it is ignored")
+        elif close:
             raise PlanError(f"the plan has {key!r}. Did you mean {rules[close[0]]!r}? As written, that rule is ignored")
 
 
@@ -179,7 +170,8 @@ class Plan:
             raise PlanError(f"the plan {self.path} is not valid JSON: {err}")
         if not isinstance(data, dict) or data.get("status_doc") is None:
             raise PlanError(f"the plan {self.path} names no status_doc")
-        _no_misspelled_rules(data)
+        self.signal_problems = []
+        _no_misspelled_rules(data, self.signal_problems)
         self.data = data
         self.dir = self.path.parent
         self.title = data.get("title", "Status")
@@ -206,10 +198,9 @@ class Plan:
         self.verdict_state = self._path(verdict_state) if verdict_state else None
         if self.verdict_state and _not_a_regular_file(self.verdict_state):
             raise PlanError(f"verdict_state: {verdict_state} is not a regular file")
-        self.deadline = _date(data, "deadline")
-        self.start = _date(data, "start")
-        self.requirements = _strings(data, "requirements")
-        self.focus = _typed(data, "focus", dict, {})
+        self.deadline = self._signal_day(data, "deadline")
+        self.start = self._signal_day(data, "start")
+        self.requirements = self._signal_files(data)
         self.generated_by = data.get("generated_by", "gitdone render")
         self.regenerate = data.get("regenerate", "gitdone render --write")
         self.noun = data.get("noun", "rows")
@@ -229,34 +220,66 @@ class Plan:
             if not isinstance(w, dict) or "id" not in w:
                 raise PlanError(f"workstreams: each one needs an id, got {w!r}")
         self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
-        self._check_focus()
+        self.focus = self._signal_focus(data)
         if self.deadline and self.start and self.start > self.deadline:
-            raise PlanError(f"start: {self.start} is after the deadline, {self.deadline}")
+            self.signal_problems.append(f"start: {self.start} is after the deadline, {self.deadline}, so it is ignored")
+            self.start = None
         self.sections = _typed(data, "sections", list, None) or self._default_sections()
         for section in self.sections:
             self._check_section(section)
 
-    def _check_focus(self):
-        """What ties a commit to a row is read on every commit by the hook, so a mistake in it is said by the plan, where it was made, and a few bytes cannot ask for much."""
-        for key in self.focus:
-            if key not in FOCUS_KEYS:
-                raise PlanError(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}")
-        for key in ("upkeep", "not_upkeep"):
-            value = self.focus.get(key, [])
-            if not isinstance(value, list) or not all(isinstance(p, str) for p in value):
-                raise PlanError(f"focus: {key}: expected a list of file patterns, got {value!r}")
-        raw = self.focus.get("paths", {})
+    def _signal_day(self, data, key):
+        if key not in data or data[key] is None:
+            return None
+        day = _a_day(data[key])
+        if day is None:
+            self.signal_problems.append(f"{key}: expected a date like 2026-12-01, got {data[key]!r}, so it is ignored")
+        return day
+
+    def _signal_files(self, data):
+        value = data.get("requirements", [])
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            self.signal_problems.append(f"requirements: expected a list of file names, got {value!r}, so it is ignored")
+            return []
+        return list(dict.fromkeys(value))
+
+    def _signal_focus(self, data):
+        """What ties a commit to a row. The hook reads it on every commit, so what is wrong in it is left out and said, and a few bytes cannot ask for much."""
+        raw = data.get("focus", {})
         if not isinstance(raw, dict):
-            raise PlanError(f"focus: paths: expected rows or workstreams and their file patterns, got {raw!r}")
+            self.signal_problems.append(f"focus: expected an object, got {raw!r}, so it is ignored")
+            return {}
+        out = {}
+        for key in raw:
+            if key not in FOCUS_KEYS:
+                self.signal_problems.append(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}, so it is ignored")
+        for key in ("upkeep", "not_upkeep"):
+            value = raw.get(key, [])
+            if isinstance(value, list) and all(isinstance(p, str) for p in value):
+                out[key] = value
+            else:
+                self.signal_problems.append(f"focus: {key}: expected a list of file patterns, got {value!r}, so it is ignored")
+        paths = raw.get("paths", {})
+        if not isinstance(paths, dict):
+            self.signal_problems.append(f"focus: paths: expected rows or workstreams and their file patterns, got {paths!r}, so it is ignored")
+            paths = {}
         ids = {w.get("id") for w in self.workstreams}
-        named = 0
-        for key, patterns in raw.items():
+        out["paths"], named = {}, 0
+        for key, patterns in paths.items():
             if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
-                raise PlanError(f"focus: paths: {key}: expected a list of file patterns, got {patterns!r}")
+                self.signal_problems.append(f"focus: paths: {key}: expected a list of file patterns, so it is ignored")
+                continue
             if key not in ids:
-                named += len(numbers(key, f"focus: paths: {key}"))
+                try:
+                    named += len(numbers(key, f"focus: paths: {key}"))
+                except PlanError as err:
+                    self.signal_problems.append(f"{err}, so it is ignored")
+                    continue
                 if named > MAX_NUMBERS:
-                    raise PlanError(f"focus: paths names more than {MAX_NUMBERS} rows")
+                    self.signal_problems.append(f"focus: paths names more than {MAX_NUMBERS} rows, so the rest is ignored")
+                    break
+            out["paths"][key] = patterns
+        return out
 
     def root(self):
         """The folder this plan may write inside: its repository, or its own folder when it is in none."""

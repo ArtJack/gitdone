@@ -1,6 +1,9 @@
 """Each test here is a defect someone reproduced in `eta`, `focus` or `matrix`: an independent attack and a cold read, against the first cut of this layer."""
+import contextlib
 import datetime
+import io
 import json
+import os
 import pathlib
 import shlex
 import shutil
@@ -248,10 +251,11 @@ class TheWords(Case):
         self.assertIn("by the plan's weights", words)
         self.assertNotIn("every row is done", words)
 
-    def test_t37_a_start_after_the_deadline_is_refused(self):
+    def test_t37_a_start_after_the_deadline_is_said_and_left_out(self):
         self.write_plan(deadline="2026-03-05", start="2026-04-01")
-        with self.assertRaisesRegex(PlanError, "after the deadline"):
-            self.plan()
+        plan = self.plan()
+        self.assertIsNone(plan.start)
+        self.assertIn("after the deadline", plan.signal_problems[0])
 
     def test_the_date_says_what_it_rests_on_when_scope_keeps_growing(self):
         self.steady()
@@ -285,10 +289,8 @@ class TheLiveLine(Case):
         self.assertEqual(found["live"]["left"], 10)
         self.assertEqual(found["live"]["moving_days"], 0)
         self.assertIsNone(found["live"]["likely"])
-        self.assertGreater(found["short_of_live_share"], 0.99)
         words = forecast.text(found)
         self.assertIn("Live alone  no date: they moved on 0 of the last 28 days", words)
-        self.assertIn("stopped short of Live", words)
         self.assertIn("with all work, and Live rows alone give no date yet", forecast.headline(found))
 
     def test_rows_reaching_live_get_their_own_date(self):
@@ -301,7 +303,6 @@ class TheLiveLine(Case):
         self.assertEqual(found["live"]["left"], 6)
         self.assertEqual(found["live"]["moving_days"], 4)
         self.assertIsNotNone(found["live"]["likely"])
-        self.assertEqual(found["short_of_live_share"], 0.0)
 
     def test_a_deadline_says_both_when_they_disagree(self):
         self.write_plan(deadline="2026-12-01")
@@ -473,8 +474,9 @@ class TheFocusCommits(Case):
 
     def test_t19_a_few_bytes_cannot_ask_for_much(self):
         self.write_plan(focus={"paths": {f"{i}-{i + 99999}": ["x/"] for i in range(1, 121)}})
-        with self.assertRaisesRegex(PlanError, "names more than"):
-            self.plan()
+        plan = self.plan()
+        self.assertIn("names more than", plan.signal_problems[0])
+        self.assertLessEqual(len(plan.focus["paths"]), 2)
 
     def test_t25_a_message_with_the_old_separators_is_read_whole(self):
         path = self.repo / "a.py"
@@ -730,14 +732,22 @@ class TheActionsComment(Case):
             self.assertFalse(line.startswith("!["), line)
         self.assertNotIn("`\n", lines.split("**Requirements with no row:**")[-1].split(".")[0])
 
-    def test_t24_a_change_to_what_was_asked_for_is_judged(self):
+    def test_t24_a_change_to_what_was_asked_for_is_said_and_t47_is_not_judged(self):
+        """It is not a change to the tracker, so a stale view elsewhere must not block it. What it did to the scope still has to be said."""
         (self.repo / "spec.md").write_text("- REQ-1: one\n")
         self.write_plan(requirements=["spec.md"])
         base = self.base()
         (self.repo / "spec.md").write_text("- REQ-1: one\n- REQ-2: two\n")
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "spec: ask for more")
-        self.assertTrue(ci.touched(self.plan(), base))
+        self.assertFalse(ci.touched(self.plan(), base))
+        out = io.StringIO()
+        previous = os.getcwd()
+        os.chdir(self.repo)
+        self.addCleanup(os.chdir, previous)
+        with contextlib.redirect_stdout(out):
+            ci._say_focus(self.plan(), base)
+        self.assertIn("requirements no row names", out.getvalue())
 
     def test_t36_a_moved_deadline_is_not_a_change_to_the_gates_rules(self):
         base = self.base()
@@ -821,6 +831,329 @@ class TheEngineStillIsTheOnlyOneThatRuns(Case):
 
     def test_gitio_is_what_runs_git(self):
         self.assertTrue(gitio.git(self.repo, "rev-parse", "--git-dir").out.strip())
+
+
+class TheSecondAttack(Case):
+    """What the fixes for the first attack broke or missed."""
+
+    def rename_a_kind(self, kinds):
+        self.write_plan(kinds=kinds)
+
+    def test_t43_a_kind_renamed_in_the_plan_keeps_the_record(self):
+        self.rows[12] = ("Thing 12", "Partial")
+        self.commit("2026-01-01", "first")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20"), start=1):
+            self.rows[i] = (f"Thing {i}", "Live")
+            self.commit(day)
+        self.write_plan(kinds=[{"name": "Live", "weight": 1.0, "evidence": "release"}, {"name": "In progress", "weight": 0.4, "evidence": "note"}, {"name": "Not built", "weight": 0.0}])
+        self.rows[12] = ("Thing 12", "In progress")
+        self.commit("2026-02-25", "rename the kind")
+        found = self.data()
+        self.assertEqual(found["state"], "dated")
+        self.assertEqual(found["moving_days"], 4)
+        self.assertGreater(len(chart.points(self.plan(), today=TODAY.isoformat())), 4)
+
+    def test_t44_a_wrong_count_in_a_heading_loses_nothing(self):
+        self.commit("2026-01-01", "first")
+        (self.repo / "status-table.md").write_text(table_text(self.rows).replace("(10)", "(9)"))
+        self.commit("2026-02-03", "count off by one", table=False)
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15"), start=1):
+            self.rows[i] = (f"Thing {i}", "Partial")
+            (self.repo / "status-table.md").write_text(table_text(self.rows).replace("(10)", "(9)"))
+            self.commit(day, table=False)
+        self.write_table()
+        self.commit("2026-02-20", "fix the count", table=False)
+        self.assertEqual(self.data()["moving_days"], 3)
+
+    def test_t56_a_typo_in_one_row_does_not_move_the_credit_for_another(self):
+        self.commit("2026-01-01", "first")
+        self.rows[1] = ("Thing 1", "Live")
+        self.rows[2] = ("Thing 2", "Parital")
+        sha = self.commit("2026-02-20", "ship the export", files={"x.py": "1\n"})
+        self.rows[2] = ("Thing 2", "Partial")
+        self.commit("2026-02-25", "wire up the fax", files={"y.py": "1\n"})
+        found = {c["commit"]: c for c in focus.data(self.plan(), today=TODAY)["list"]}
+        self.assertEqual(found[sha[:7]]["class"], focus.ON)
+
+    def test_t57_a_tool_that_fixes_the_committers_date_loses_no_days(self):
+        self.commit("2026-01-01", "first", committer="2001-01-01")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15"), start=1):
+            self.rows[i] = (f"Thing {i}", "Partial")
+            self.commit(day, committer="2001-01-01")
+        self.assertEqual(self.data()["moving_days"], 3)
+
+    def test_t58_a_table_moved_in_two_steps_keeps_its_life(self):
+        self.commit("2025-01-01", "first")
+        (self.repo / "docs").mkdir()
+        shutil.copy(self.repo / "status-table.md", self.repo / "docs" / "status-table.md")
+        self.commit("2026-02-20", "copy", table=False)
+        (self.repo / "status-table.md").unlink()
+        self.write_plan(status_doc="docs/status-table.md")
+        self.commit("2026-02-21", "drop the old one", table=False)
+        self.assertEqual(self.data()["window_days"], 28)
+
+    def test_t4_a_rebase_onto_a_later_base_keeps_the_days_apart(self):
+        self.commit("2026-01-01", "first")
+        git(self.repo, "checkout", "-q", "-b", "f")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15"), start=1):
+            self.rows[i] = (f"Thing {i}", "Partial")
+            self.commit(day)
+        git(self.repo, "checkout", "-q", "main")
+        self.rows = {n: (f"Thing {n}", "Not built") for n in range(1, 11)}
+        self.rows[10] = ("Thing 10", "Partial")
+        self.commit("2026-02-24", "main side")
+        git(self.repo, "checkout", "-q", "f")
+        (self.repo / "status-table.md").write_text(table_text({**{n: (f"Thing {n}", "Not built") for n in range(1, 11)}, 1: ("Thing 1", "Partial"), 2: ("Thing 2", "Partial"), 3: ("Thing 3", "Partial")}))
+        done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-C", str(self.repo), "rebase", "-q", "-X", "theirs", "main"],
+                              env={**clean_env(), "GIT_COMMITTER_DATE": "2026-02-28T12:00:00"}, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertGreaterEqual(self.data()["moving_days"], 3)
+
+    def test_t14_both_clocks_wrong_on_one_commit_take_nothing_else_with_them(self):
+        self.commit("2026-01-01", "first")
+        self.rows[1] = ("Thing 1", "Partial")
+        self.commit("2031-01-01", "m1", committer="2031-01-01")
+        for i, day in zip((2, 3, 4), ("2026-02-08", "2026-02-15", "2026-02-22")):
+            self.move(i, "Partial", day)
+        self.assertGreaterEqual(self.data()["moving_days"], 3)
+
+    def test_t16_rows_that_only_went_back_are_said_to(self):
+        for n in range(1, 5):
+            self.rows[n] = (f"Thing {n}", "Partial")
+        self.commit("2026-01-01", "first")
+        for n, day in zip((4, 3, 2, 1), ("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20")):
+            self.move(n, "Not built", day)
+        self.assertIn("only backwards", forecast.headline(self.data()))
+
+    def test_t54_rows_reaching_live_from_an_equal_weight_get_their_date(self):
+        self.write_plan(kinds=[{"name": "Live", "weight": 1.0, "evidence": "release"}, {"name": "Merged", "weight": 1.0}, {"name": "Todo", "weight": 0.0}])
+        self.rows = {n: (f"Thing {n}", "Merged" if n < 4 else "Todo") for n in range(1, 7)}
+        self.commit("2026-01-01", "first")
+        for n, day in zip((1, 2, 3), ("2026-02-05", "2026-02-10", "2026-02-15")):
+            self.move(n, "Live", day)
+        found = self.data()
+        self.assertEqual(found["state"], "dated")
+        self.assertIn("on Live rows alone", forecast.headline(found))
+        self.assertIn("no date: nothing moved by the weights", forecast.text(found))
+
+    def test_t17_a_shallow_clone_has_no_time_bar_to_invent(self):
+        self.write_plan(deadline="2026-12-01")
+        self.steady()
+        clone = self.tmp / "clone"
+        git(self.tmp, "clone", "-q", "--depth", "1", f"file://{self.repo}", str(clone))
+        found = forecast.data(Plan(clone / ".gitdone.json"), today=TODAY)
+        self.assertIsNone(found["deadline"]["time_used"])
+        self.assertNotIn("  Time", forecast.text(found))
+
+    def test_t22_the_opener_passes_over_an_empty_workstream_too(self):
+        self.write_plan(workstreams=[{"id": "P1", "name": "Empty", "rows": []}, {"id": "P2", "name": "Real", "rows": [1, 2]}], order=["P1", "P2"])
+        self.write_table()
+        plan = self.plan()
+        from gitdone import render
+        self.assertEqual(render.opener_data(plan, tables.load_clean(plan))["next"]["id"], "P2")
+
+    def test_t41_the_same_file_named_a_thousand_times_is_read_once(self):
+        self.write_table()
+        (self.repo / "spec.md").write_text("- REQ-1: one\n")
+        self.write_plan(requirements=["spec.md"] * 3000)
+        self.assertEqual(self.plan().requirements, ["spec.md"])
+
+    def test_t49_nothing_hidden_counts_as_nested(self):
+        text = ("Intro words <!-- the old plan, dropped:\n- REQ-9: an idea we threw away\n-->\n\n- REQ-1: a real one\n\n      REQ-10: indented code under a list item\n\n"
+                "- REQ-2: another\n    ```\n    REQ-11: in a nested fence\n    ```\n")
+        self.assertEqual([i.ident for i in requirements.parse(text, "s.md")], ["REQ-1", "REQ-2"])
+
+    def test_t18_a_sentence_that_starts_with_a_standard_is_a_sentence(self):
+        text = "Storage follows the audit we passed under\nSOC-2. Everything else is out of scope.\nThe model we picked is\nGPT-4 - it was the cheapest at the time.\nOur contract says\nCR-7 — see the appendix.\n- IEEE-754 doubles everywhere\n- ECMA-262 only\n"
+        self.assertEqual(requirements.parse(text, "s.md"), [])
+
+    def test_t66_a_line_too_long_is_said(self):
+        problems = []
+        items = requirements.parse("- REQ-1: short\n- REQ-2: " + "very long words " * 150 + "\n- REQUIREMENT-1: a long prefix\n", "s.md", problems)
+        self.assertEqual([i.ident for i in items], ["REQ-1", "REQUIREMENT-1"])
+        self.assertIn("over 2000 characters", problems[0])
+
+    def test_t68_no_words_ties_to_nothing(self):
+        self.rows = {1: ("", "Not built")}
+        (self.repo / "status-table.md").write_text("### 1. All (1)\n\n| # | Capability | Status | Note |\n|---|---|---|---|\n| 1 | Named | Not built | |\n")
+        (self.repo / "spec.md").write_text("- REQ-1:\n")
+        self.write_plan(requirements=["spec.md"])
+        plan = self.plan()
+        self.assertEqual(len(requirements.coverage(plan, tables.load_clean(plan))["without"]), 1)
+
+    def test_t50_merging_main_into_a_branch_named_for_a_row_says_nothing_about_main(self):
+        self.commit("2026-01-01", "first")
+        git(self.repo, "checkout", "-q", "-b", "row-3-export")
+        self.commit("2026-02-20", "row 3: export", files={"e.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        fax = self.commit("2026-02-21", "wire up the fax", files={"f.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "row-3-export")
+        stamp = {"GIT_AUTHOR_DATE": "2026-02-22T12:00:00", "GIT_COMMITTER_DATE": "2026-02-22T12:00:00"}
+        git(self.repo, "merge", "-q", "-m", "Merge branch 'main' into row-3-export", "main", env=stamp)
+        git(self.repo, "checkout", "-q", "main")
+        stamp = {"GIT_AUTHOR_DATE": "2026-02-23T12:00:00", "GIT_COMMITTER_DATE": "2026-02-23T12:00:00"}
+        git(self.repo, "merge", "-q", "--no-ff", "-m", "Merge branch 'row-3-export'", "row-3-export", env=stamp)
+        found = {c["commit"]: c for c in focus.data(self.plan(), today=TODAY)["list"]}
+        self.assertEqual(found[fax[:7]]["class"], focus.OFF)
+
+    def test_t51_a_number_the_table_never_read_as_a_row_is_not_a_row(self):
+        (self.repo / "status-table.md").write_text("Example:\n\n```\n| 12345 | A row | Live | n |\n```\n\n" + table_text(self.rows))
+        self.commit("2026-01-01", "first", table=False)
+        self.assertEqual(self.engine("render", "--write").returncode, 0)
+        done = self.engine("add", "Something new")
+        self.assertIn("added row 11", done.stdout)
+
+    def test_t52_many_blank_lines_in_an_old_table_cost_nothing(self):
+        self.commit("2026-01-01", "first")
+        (self.repo / "status-table.md").write_text(table_text(self.rows) + "\n" * 300000)
+        self.commit("2026-01-02", "blanks", table=False)
+        self.commit("2026-01-03", "back")
+        self.assertEqual(self.engine("render", "--write").returncode, 0)
+        began = time.monotonic()
+        self.assertEqual(self.engine("add", "Something new").returncode, 0)
+        self.assertLess(time.monotonic() - began, 15.0)
+
+    def test_t53_a_long_heading_in_a_checklist_costs_nothing(self):
+        from gitdone import scaffold
+        began = time.monotonic()
+        sections = scaffold.sections_from_checklist("# a" + " " * 80000 + "b\n- [ ] item\n")
+        self.assertLess(time.monotonic() - began, 2.0)
+        self.assertEqual(sum(len(s.rows) for s in sections), 1)
+
+    def test_t59_week_from_a_commit_that_deleted_the_table(self):
+        self.commit("2026-01-01", "first")
+        self.assertEqual(self.engine("render", "--write").returncode, 0)
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "view", env={"GIT_AUTHOR_DATE": "2026-01-02T12:00:00", "GIT_COMMITTER_DATE": "2026-01-02T12:00:00"})
+        kept = (self.repo / "status-table.md").read_text()
+        (self.repo / "status-table.md").unlink()
+        self.commit("2026-01-05", "drop", table=False)
+        (self.repo / "status-table.md").write_text(kept)
+        self.commit("2026-01-08", "back", table=False)
+        from gitdone import history
+        found = history.delta_data(self.plan(), since="2026-01-07", today=datetime.date(2026, 1, 9))
+        self.assertEqual(found["moved"], [])
+
+    def test_t62_a_row_in_a_domain_with_no_table_can_be_named(self):
+        (self.repo / "status-table.md").write_text("### 1. Later (3)\n\nNothing yet.\n\n### 2. Now (2)\n\n| # | Name | Status | Note |\n|---|---|---|---|\n| 4 | T4 | Not built | n |\n| 5 | T5 | Not built | n |\n")
+        self.commit("2026-01-01", "first", table=False)
+        sha = self.commit("2026-02-25", "row 2: first cut", files={"w.py": "1\n"}, table=False)
+        found = {c["commit"]: c for c in focus.data(self.plan(), today=TODAY)["list"]}
+        self.assertEqual(found[sha[:7]]["class"], focus.ON)
+
+    def test_t63_specs_under_any_folder_are_upkeep(self):
+        self.commit("2026-01-01", "first")
+        sha = self.commit("2026-02-25", "touch it", files={"pkg/specs/a.yml": "1\n"}, table=False)
+        found = {c["commit"]: c for c in focus.data(self.plan(), today=TODAY)["list"]}
+        self.assertEqual(found[sha[:7]]["class"], focus.UPKEEP)
+
+    def test_t72_a_table_renamed_in_the_change_still_has_its_scope_said(self):
+        self.commit("2026-01-01", "first")
+        base = git(self.repo, "rev-parse", "HEAD")
+        (self.repo / "docs").mkdir()
+        git(self.repo, "mv", "status-table.md", "docs/status-table.md")
+        self.write_plan(status_doc="docs/status-table.md")
+        self.rows[11] = ("Thing 11", "Not built")
+        (self.repo / "docs" / "status-table.md").write_text(table_text(self.rows))
+        self.commit("2026-02-25", "move it, and add a row", table=False)
+        self.assertEqual(forecast.against(self.plan(), base, today=TODAY)["added"], [11])
+
+    def test_t30_a_plans_paths_are_from_its_folder_whatever_repo_says(self):
+        project = self.repo / "proj"
+        project.mkdir()
+        self.plan_path.unlink()
+        self.plan_path = project / ".gitdone.json"
+        self.plan_path.write_text(json.dumps({"status_doc": "status-table.md", "repo": "..", "default_branch": "main", "focus": {"paths": {"1": ["src/"]}}}))
+        (project / "status-table.md").write_text(table_text(self.rows))
+        self.commit("2026-01-01", "first", table=False)
+        sha = self.commit("2026-02-25", "Wire up the printer", files={"proj/src/a.py": "1\n"}, table=False)
+        found = {c["commit"]: c for c in focus.data(self.plan(), today=TODAY)["list"]}
+        self.assertEqual(found[sha[:7]]["class"], focus.ON)
+
+
+class TheHooksSecondAttack(Case):
+    def setUp(self):
+        super().setUp()
+        needs_sh(self)
+        self.plan_path.unlink()
+
+    def real_commit(self, message, name):
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(message + "\n")
+        git(self.repo, "add", "-A")
+        return subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-C", str(self.repo), "commit", "-m", message],
+                              env=clean_env(), capture_output=True, text=True)
+
+    def project(self, name):
+        folder = self.repo / name
+        folder.mkdir()
+        (folder / ".gitdone.json").write_text(json.dumps({"status_doc": "status-table.md", "repo": ".", "default_branch": "main"}))
+        (folder / "status-table.md").write_text(table_text(self.rows))
+        self.assertEqual(self.engine("render", "--write", cwd=folder).returncode, 0)
+        return folder
+
+    def test_t45_a_siblings_commit_says_nothing_about_an_old_one(self):
+        one = self.project("proj")
+        (self.repo / "other").mkdir()
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "begin")
+        self.assertEqual(self.engine("install-hook", cwd=one).returncode, 0)
+        self.assertIn("is off plan", (lambda d: d.stdout + d.stderr)(self.real_commit("Wire up the printer", "proj/f.py")))
+        self.assertNotIn("is off plan", (lambda d: d.stdout + d.stderr)(self.real_commit("Other project work", "other/o.py")))
+
+    def test_t46_one_hook_serves_every_tracker(self):
+        one, two = self.project("a"), self.project("b")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "begin")
+        self.assertEqual(self.engine("install-hook", cwd=one).returncode, 0)
+        self.assertEqual(self.engine("install-hook", cwd=two).returncode, 0)
+        self.assertIn("is off plan", (lambda d: d.stdout + d.stderr)(self.real_commit("Wire up in a", "a/f.py")))
+        self.assertIn("is off plan", (lambda d: d.stdout + d.stderr)(self.real_commit("Wire up in b", "b/f.py")))
+
+
+class WhatReachesALog(Case):
+    def test_t5_a_plans_words_cannot_start_a_workflow_command(self):
+        self.write_table()
+        self.write_plan(status_out="x\n::error title=gitdone::the gate failed\ny.md")
+        for command in (("check", "--offline"), ("render",)):
+            done = self.engine(*command)
+            for line in (done.stdout + done.stderr).split("\n"):
+                self.assertFalse(line.lstrip().startswith("::"), line)
+
+    def test_t5_a_group_label_cannot_start_a_line(self):
+        self.write_table()
+        self.write_plan(groups=[{"id": "a", "label": "A\n::error::from a group label", "domains": [1]}])
+        self.assertEqual(self.engine("render", "--write").returncode, 0)
+        done = self.engine("opener")
+        for line in done.stdout.split("\n"):
+            self.assertFalse(line.startswith("::"), line)
+
+    def test_ci_itself_still_speaks_to_the_runner(self):
+        self.write_table()
+        self.write_plan()
+        event = self.tmp / "event.json"
+        event.write_text("{}")
+        (self.repo / "STATUS.md").write_text("stale\n")
+        done = self.engine("ci", "--no-comment", env={"GITHUB_EVENT_PATH": str(event)})
+        self.assertIn("::error", done.stdout)
+
+    def test_t7_what_no_encoding_can_hold_does_not_crash_the_print(self):
+        self.write_table()
+        self.plan_path.write_text('{"status_doc": "status-table.md", "repo": ".", "requirements": ["\\ud800.md"]}')
+        self.assertEqual(self.engine("render", "--write").returncode, 0)
+        done = self.engine("check", "--offline")
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_t48_a_mistake_in_a_signal_says_so_and_changes_no_exit_code(self):
+        self.write_table()
+        for keys in ({"focus": {"paths": {"P9": ["src/"]}}}, {"deadline": "soon"}, {"deadline": "2026-01-01", "start": "2026-06-01"}, {"focus": {"not_upkeep": "docs/*"}}, {"requirements": "spec.md"}, {"deadlin": "2026-01-01"}):
+            with self.subTest(keys):
+                self.write_plan(**keys)
+                self.assertEqual(self.engine("render", "--write").returncode, 0)
+                done = self.engine("check", "--offline")
+                self.assertEqual(done.returncode, 0, done.stderr)
+                self.assertIn("NOTE", done.stdout)
 
 
 if __name__ == "__main__":
