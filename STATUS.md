@@ -6,17 +6,17 @@
 
 ## GitDone: 43 capabilities
 
-- **Strict:** 0 of 43 live on main · `░░░░░░░░░░░░░░░░░░░░` 0%
-- **Weighted:** `███████░░░░░░░░░░░░░` 33%
-- Built on a branch, not on main: 0 · partial: 36 · not built: 7
+- **Strict:** 29 of 43 live on main · `█████████████░░░░░░░` 67%
+- **Weighted:** `███████████████░░░░░` 74%
+- Built on a branch, not on main: 0 · partial: 7 · not built: 7
 
 | Domain | Rows | Live | Built | Partial | Not built | Strict | Weighted | |
 |---|---|---|---|---|---|---|---|---|
-| 1. The engine | 6 | 0 | 0 | 6 | 0 | 0% | 40% | `█████░░░░░░░` |
-| 2. Installs anywhere | 8 | 0 | 0 | 7 | 1 | 0% | 35% | `████░░░░░░░░` |
-| 3. Onboarding | 7 | 0 | 0 | 7 | 0 | 0% | 40% | `█████░░░░░░░` |
-| 4. Visibility | 6 | 0 | 0 | 6 | 0 | 0% | 40% | `█████░░░░░░░` |
-| 5. Evidence and agents | 10 | 0 | 0 | 9 | 1 | 0% | 36% | `████░░░░░░░░` |
+| 1. The engine | 6 | 6 | 0 | 0 | 0 | 100% | 100% | `████████████` |
+| 2. Installs anywhere | 8 | 5 | 0 | 2 | 1 | 62% | 72% | `█████████░░░` |
+| 3. Onboarding | 7 | 6 | 0 | 1 | 0 | 86% | 91% | `███████████░` |
+| 4. Visibility | 6 | 4 | 0 | 2 | 0 | 67% | 80% | `██████████░░` |
+| 5. Evidence and agents | 10 | 8 | 0 | 1 | 1 | 80% | 84% | `██████████░░` |
 | 6. Adoption | 2 | 0 | 0 | 1 | 1 | 0% | 20% | `██░░░░░░░░░░` |
 | 7. Launch | 4 | 0 | 0 | 0 | 4 | 0% | 0% | `░░░░░░░░░░░░` |
 
@@ -24,10 +24,10 @@
 
 | # | Workstream | Rows | Strict | Weighted | State | Needs |
 |---|---|---|---|---|---|---|
-| 1 | **P1** Foundation | 7, 8, 9, 10, 11, 12, 13, 14 | 0/8 | 35% `████░░░░░░` | packaging and scaffold built; CI and the release workflow run for the first time with this commit | a green run on GitHub |
-| 2 | **P2** Onboarding | 15, 16, 17, 18, 19, 20, 43 | 0/7 | 40% `████░░░░░░` | built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person | one person who has not seen it |
-| 3 | **P3** Visibility | 21, 22, 23, 24, 25, 26 | 0/6 | 40% `████░░░░░░` | built; the Action is tested against stubs and runs on GitHub for the first time with this commit | a green run on GitHub |
-| 4 | **P4** Evidence and agents | 27, 28, 29, 30, 31, 32, 33, 34, 41, 42 | 0/10 | 36% `████░░░░░░` | built; the skills.sh listing waits for the public repository | the public repository |
+| 1 | **P1** Foundation | 7, 8, 9, 10, 11, 12, 13, 14 | 5/8 | 72% `███████░░░` | packaging and scaffold built; CI and the release workflow run for the first time with this commit | a green run on GitHub |
+| 2 | **P2** Onboarding | 15, 16, 17, 18, 19, 20, 43 | 6/7 | 91% `█████████░` | built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person | one person who has not seen it |
+| 3 | **P3** Visibility | 21, 22, 23, 24, 25, 26 | 4/6 | 80% `████████░░` | built; the Action is tested against stubs and runs on GitHub for the first time with this commit | a green run on GitHub |
+| 4 | **P4** Evidence and agents | 27, 28, 29, 30, 31, 32, 33, 34, 41, 42 | 8/10 | 84% `████████░░` | built; the skills.sh listing waits for the public repository | the public repository |
 | 5 | **P5** Adoption | 35, 36 | 0/2 | 20% `██░░░░░░░░` | one real project runs on the engine | each project's owner to name its scope |
 | 6 | **P6** Launch | 37, 38, 39, 40 | 0/4 | 0% `░░░░░░░░░░` | going public now | two weeks of its own gate before 1.0 |
 
