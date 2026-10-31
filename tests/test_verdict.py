@@ -69,7 +69,7 @@ class Annotation(ProjectCase):
 
     def test_a_tilde_is_the_home_directory(self):
         self.change_plan(verdict_state="~/x/state.json")
-        self.assertEqual(str(self.plan().verdict_state), os.path.expanduser("~/x/state.json"))
+        self.assertEqual(str(self.plan().verdict_state), os.path.normpath(os.path.expanduser("~/x/state.json")))
 
     def test_the_state_file_is_only_read(self):
         path = self.name_state(state())

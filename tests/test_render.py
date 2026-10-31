@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from helpers import ENGINE, EXAMPLE, ProjectCase
+from helpers import ENGINE, EXAMPLE, ProjectCase, not_on_windows
 from gitdone import render, table as tables
 from gitdone.plan import Plan
 
@@ -227,6 +227,7 @@ class Commands(ProjectCase):
         self.assertIn("█".encode("utf-8"), self.view_path.read_bytes())
 
     def test_a_reader_that_stops_early_is_not_an_error(self):
+        not_on_windows(self, "this is a POSIX shell's pipe and a POSIX `head`")
         done = subprocess.run(f"'{sys.executable}' '{ENGINE}' render --plan '{self.plan_path}' | head -1", shell=True,
                               capture_output=True, text=True)
         self.assertTrue(done.stdout.startswith("# Bramble Kiosk tracker"))

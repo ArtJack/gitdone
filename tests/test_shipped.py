@@ -3,7 +3,7 @@ import stat
 import unittest
 import unittest.mock
 
-from helpers import ProjectCase
+from helpers import ProjectCase, not_on_windows
 from gitdone import render, shipped, table as tables
 
 
@@ -102,6 +102,7 @@ class Moves(ProjectCase):
         self.assertEqual(stat.S_IMODE(self.view_path.stat().st_mode), 0o666 & ~umask)
 
     def test_an_existing_file_keeps_its_permissions(self):
+        not_on_windows(self, "a file there has no such mode to keep")
         self.table_path.chmod(0o640)
         self.cli("shipped", "10", self.sha_main[:7], "--offline")
         self.assertEqual(stat.S_IMODE(self.table_path.stat().st_mode), 0o640)
