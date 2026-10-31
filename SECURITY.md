@@ -26,6 +26,8 @@ A plan and a table can arrive with a clone or a pull request, so they are treate
 - **A plan cannot make a command overwrite a file outside its project,** directly or through a symbolic link, **or inside git's own folder,** where a file it wrote would run as a
   hook or break the repository. The plan, the table and the view must be real, regular files, so a gate never reads something a commit does not hold, and a device or a
   pipe cannot hang it. A view only replaces a view or a file git holds as it stands, so a plan cannot wipe an ignored `.env` or uncommitted work.
+- **A plan's requirement files are read only inside the project.** A plan can come from a clone, and those words can reach a pull request's comment, so a file outside it, or behind a symbolic link, is not read.
+  The comment names where a requirement is, not what it says. A commit's subject never goes in it.
 - **The plan is read strictly,** since it sets the gate's rules: a key given twice and an unknown key in a kind are refused, and the hook and the Action say out loud when
   a change touches the rules.
 - **Row text is never executed,** and a git reference taken from a row must match a strict pattern before it reaches `git`. `git replace` cannot rewrite what a

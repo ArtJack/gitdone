@@ -7,7 +7,7 @@ import json
 import pathlib
 import sys
 
-from . import __version__, gate, history, portfolio, render, report, table as tables
+from . import __version__, focus, forecast, gate, history, portfolio, render, report, table as tables, trace
 from .discover import POINTER, find_plan
 from .plan import Plan, PlanError
 
@@ -30,6 +30,11 @@ TOOLS = [
     _tool("check", "Run the gate: is the view true, do the counts sum, does each status have its evidence. Writes nothing.", OFFLINE),
     _tool("week", "What moved since a date, a span like '2 weeks', or a commit, from the table's git history. Default: 7 days.",
           {"since": {"type": "string"}}),
+    _tool("eta", "When it will be done if the work goes on as it has: a line through the table's git history, with a range, the scope's effect and the deadline. Quote its words, and say it is a line."),
+    _tool("focus", "Where the recent commits went: on plan, upkeep or off plan, with the reason for each. A signal, never a gate.",
+          {"days": {"type": "integer", "description": "How many days to read. Default: 14."}}),
+    _tool("next", "What to work on now: the next workstream's open rows. Anything else is a change of scope, so say so before starting it."),
+    _tool("matrix", "A traceability matrix: each requirement, the row that holds it, its evidence and the tests on record. A test listed exists; passing is CI's word.", OFFLINE),
     {"name": "portfolio", "description": "Every tracked project under a folder: strict, weighted, next, and the gate read offline.",
      "annotations": READ_ONLY,
      "inputSchema": {"type": "object", "properties": {"folder": {"type": "string", "description": "Default: the server's folder."}},
@@ -73,6 +78,10 @@ HANDLERS = {
     "check": lambda a: gate.report(_plan(a), offline=bool(a.get("offline"))).data(),
     "week": lambda a: history.delta_data(_plan(a), since=a.get("since")),
     "portfolio": lambda a: portfolio.scan([a.get("folder") or "."]),
+    "eta": lambda a: forecast.data(_plan(a)),
+    "focus": lambda a: focus.data(_plan(a), days=a.get("days") if isinstance(a.get("days"), int) and not isinstance(a.get("days"), bool) else focus.WINDOW),
+    "next": lambda a: focus.next_data(_plan(a)),
+    "matrix": lambda a: trace.data(_plan(a), offline=bool(a.get("offline"))),
 }
 
 

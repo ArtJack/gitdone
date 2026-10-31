@@ -102,6 +102,22 @@ def _gate_line(plan):
     return None
 
 
+def _time_lines(plan, table):
+    """The date and where the commits went, for whoever opens the project. A session must start whatever is wrong with either, so neither may
+    cost the lines above it.
+    """
+    from . import focus, forecast, requirements
+    lines = []
+    for step in (forecast.opener_line, focus.opener_line, lambda p: requirements.opener_line(p, table)):
+        try:
+            line = step(plan)
+        except Exception:
+            line = None
+        if line:
+            lines.append(line)
+    return lines
+
+
 def _opener_lines(plan, with_gate=False):
     table = tables.load_clean(plan)
     lines = [render.opener(plan, table)]
@@ -116,6 +132,8 @@ def _opener_lines(plan, with_gate=False):
         line = _gate_line(plan)
         if line:
             lines.append(line)
+    if with_gate:
+        lines += _time_lines(plan, table)
     return lines
 
 
@@ -150,6 +168,7 @@ def cmd_opener(args):
         table = tables.load_clean(plan)
         lines = _opener_lines(plan, with_gate=True)
         _print_json({"line": lines[0], **render.opener_data(plan, table), "release": verdict.release_line(plan) or None,
+                     "time": [line for line in lines[1:] if not line.startswith("⚠ ") and line != verdict.release_line(plan)],
                      "warnings": [line[2:] for line in lines[1:] if line.startswith("⚠ ")]})
         return 0
     print("\n".join(_opener_lines(plan, with_gate=True)))
@@ -266,12 +285,35 @@ def _refusable(step):
     return 0
 
 
+def _left_now(plan):
+    from . import forecast
+    try:
+        return forecast.left_now(plan)
+    except PlanError:
+        return None
+
+
+def _say_the_date_moved(plan, before):
+    """A change of scope costs days, and this is where whoever made it hears how many. If there is no date yet, it has nothing to say."""
+    from . import forecast
+    if before is None:
+        return
+    try:
+        words = forecast.shift_words(plan, before)
+    except (PlanError, OSError, ValueError):
+        return
+    if words:
+        print(words)
+
+
 def cmd_add(args):
     from . import edit
     plan = _plan(args)
+    before = _left_now(plan)
     code = _refusable(lambda: f"added row {edit.add(plan, ' '.join(args.name), domain=args.domain, kind=args.kind, note=args.note or '', new_domain=args.new_domain)}")
     if code == 0:
         print("\n".join(_opener_lines(plan)))
+        _say_the_date_moved(plan, before)
         print(_to_commit(plan))
     return code
 
@@ -279,9 +321,11 @@ def cmd_add(args):
 def cmd_remove(args):
     from . import edit
     plan = _plan(args)
+    before = _left_now(plan)
     code = _refusable(lambda: edit.remove(plan, args.row))
     if code == 0:
         print("\n".join(_opener_lines(plan)))
+        _say_the_date_moved(plan, before)
         print(_to_commit(plan))
     return code
 
@@ -403,10 +447,73 @@ def _write_or_print(path, text):
         sys.stdout.write(text)
 
 
+def cmd_eta(args):
+    from . import forecast
+    found = forecast.data(_plan(args), group=args.group, days=args.days)
+    if args.json:
+        _print_json(found)
+    else:
+        print(forecast.text(found))
+    return 0
+
+
+def cmd_focus(args):
+    from . import focus
+    if args.last:
+        try:  # a post-commit hook: the commit has already happened, so nothing here may be noisy about itself
+            line = focus.last_line(_plan(args))
+        except Exception:
+            return 0
+        if line:
+            print(line)
+        return 0
+    found = focus.data(_plan(args), days=args.days)
+    if args.json:
+        _print_json(found)
+    else:
+        print(focus.text(found, show_all=args.all))
+    return 0
+
+
+def cmd_next(args):
+    from . import focus
+    found = focus.next_data(_plan(args))
+    if args.json:
+        _print_json(found)
+    else:
+        print(focus.next_text(found))
+    return 0
+
+
+def cmd_matrix(args):
+    from . import trace
+    plan = _plan(args)
+    if args.json:
+        _print_json(trace.data(plan, offline=args.offline))
+    else:
+        _write_or_print(args.out, trace.markdown(plan, offline=args.offline))
+    return 0
+
+
+def _burndown(args, plan, items):
+    from . import chart, forecast
+    found = forecast.data(plan, group=args.group)
+    if args.json:
+        _print_json({"points": items, "forecast": found})
+    elif not args.out and sys.stdout.isatty():
+        print(forecast.text(found))
+        print("To draw it: gitdone chart --burndown --out burndown.svg")
+    else:
+        _write_or_print(args.out, chart.burndown(items, plan.title, found, forecast.headline(found)))
+    return 0
+
+
 def cmd_chart(args):
     from . import chart
     plan = _plan(args)
     items = chart.points(plan, group=args.group)
+    if args.burndown:
+        return _burndown(args, plan, items)
     if args.json:
         _print_json(items)
     elif args.csv:
@@ -483,7 +590,7 @@ def cmd_install_agents(args):
 
 def cmd_install_hook(args):
     from . import install
-    for hook in install.install(_plan(args), strict=not args.lenient):
+    for hook in install.install(_plan(args), strict=not args.lenient, focus=not args.no_focus):
         print("installed", hook)
     return 0
 
@@ -583,10 +690,22 @@ def _parser():
     sub = command("doctor", cmd_doctor, "Check everything the tracker needs here, on one screen. Changes nothing. Exit 1 if something is broken.",
                   as_data="the same as data")
     sub.add_argument("--offline", action="store_true", help="do not ask gh whether it is logged in")
-    sub = command("chart", cmd_chart, "A burn-up from the status table's git history: an SVG, or the numbers. No forecast.", as_data="the numbers as data")
+    sub = command("chart", cmd_chart, "A burn-up from the status table's git history, with no forecast; or with --burndown, what is left and eta's line through it.", as_data="the numbers as data")
     sub.add_argument("--out", help="write here instead of printing")
     sub.add_argument("--group", help="only this group's rows")
     sub.add_argument("--csv", action="store_true", help="the numbers as CSV")
+    sub.add_argument("--burndown", action="store_true", help="what is left over time, with the likely date, the range and the deadline")
+    sub = command("eta", cmd_eta, "When it will be done if the work goes on as it has: a line through the table's git history, with a range. Adding a row moves it, and so does dropping one.", as_data="the same as data")
+    sub.add_argument("--group", help="only this group's rows")
+    sub.add_argument("--days", type=int, default=28, help="how many days of pace to read (default: 28)")
+    sub = command("focus", cmd_focus, "Where the commits went: on plan, upkeep, or off plan. A signal, never a gate.", as_data="the same as data")
+    sub.add_argument("--days", type=int, default=14, help="how many days to read (default: 14)")
+    sub.add_argument("--all", action="store_true", help="every commit, and why it counts as it does")
+    sub.add_argument("--last", action="store_true", help="one line if the last commit was off plan, and nothing otherwise: what the post-commit hook runs")
+    command("next", cmd_next, "What to work on now: the next workstream's open rows, and nothing else.", as_data="the same as data")
+    sub = command("matrix", cmd_matrix, "A traceability matrix from the plan, the table and git: requirement, row, evidence, tests.", as_data="the same as data")
+    sub.add_argument("--out", help="write here instead of printing")
+    sub.add_argument("--offline", action="store_true", help="do not call gh or glab")
     sub = command("badge", cmd_badge, "The two numbers as a badge: a self-contained SVG, or the JSON a shields.io endpoint reads.")
     sub.add_argument("--svg", metavar="FILE", help="write an SVG badge")
     sub.add_argument("--endpoint", metavar="FILE", help="write the shields.io endpoint JSON (with neither flag, it is printed)")
@@ -608,6 +727,7 @@ def _parser():
     command("mcp", cmd_mcp, "Serve read-only tools over stdio to a coding agent (Model Context Protocol). Writes nothing.", plan=False)
     sub = command("install-hook", cmd_install_hook, "Install the gate as local pre-commit and pre-merge-commit hooks in the status table's repository. Strict unless told otherwise.")
     sub.add_argument("--lenient", action="store_true", help="only a proven contradiction stops a commit; a Live row with no evidence warns")
+    sub.add_argument("--no-focus", action="store_true", help="leave out the post-commit hook that says when a commit was off plan")
     command("install-ci", cmd_install_ci, "Add the GitHub Action workflow: the gate in every pull request, which no flag can skip.")
     sub = command("install-skill", cmd_install_skill, "Give a project its bare slash command: writes a project-level Claude Code skill there.")
     sub.add_argument("--into", help="the project root (default: the nearest folder with a pointer file)")

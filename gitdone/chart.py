@@ -1,9 +1,11 @@
-"""`chart`: a burn-up from the status table's git history. One self-contained SVG, and the same history gives the same bytes.
+"""`chart`: a picture from the status table's git history. One self-contained SVG, and the same history gives the same bytes.
 
-Three lines on one axis, in rows: the scope, what is weighted done, what is strictly done. There is no forecast: no
-percentage is a date. Standard library only, so it can run wherever the engine runs.
+The burn-up has three lines on one axis, in rows: the scope, what is weighted done, what is strictly done. It is the record, so it makes no
+forecast. The burn-down is the candle: what is left over time, up when the scope grew, with `eta`'s line through it, labelled as a line.
+Standard library only, so it can run wherever the engine runs.
 """
 import datetime
+import math
 import os
 
 from . import gitio, history as history_module, render, table as tables
@@ -15,6 +17,10 @@ LEFT, RIGHT, TOP, BOTTOM = 44, 148, 84, 30
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 LABEL_GAP = 17
 HOVER_LIMIT = 200
+BURNDOWN_RIGHT = 182  # a date with its year and its label
+MOST_SCOPE_MARKS = 6
+SCOPE_MARK_GAP = 28
+HORIZON_FACTOR, HORIZON_DAYS = 3, 60  # how far past today the axis follows a line, so that a far date does not flatten the record
 
 # The palette passes the dataviz six-check validator in both modes; the scope line is neutral ink, not a third hue.
 STYLE = """
@@ -29,9 +35,9 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 """
 
 
-def _history(top, rel):
+def _history(top, rel, *limits):
     """(commit, author date, the table's path then) on the main line, newest first, following a rename."""
-    done = gitio.git(top, "log", "--first-parent", "-m", "--follow", "--format=%x01%H %as", "--name-only", "--", rel)
+    done = gitio.git(top, "log", "--first-parent", "-m", "--follow", *limits, "--format=%x01%H %as", "--name-only", "--", rel)
     out, path = [], rel
     for entry in done.out.split("\x01"):
         lines = [line for line in entry.split("\n") if line.strip()]
@@ -191,6 +197,117 @@ def svg(items, title):
         left = x(item)
         right = x(shown[i + 1]) if i + 1 < len(shown) else LEFT + plot_w
         tip = (f"{item['date']}: scope {item['scope']}, weighted {item['weighted']:g}, strict {item['strict']}")
+        out.append(f'<rect x="{left:.1f}" y="{TOP}" width="{max(right - left, 1):.1f}" height="{plot_h}" fill="transparent"><title>{escape(tip)}</title></rect>')
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
+def _toward(start, left, end, edge):
+    """Where a straight burn from (start, left) to (end, 0) stands at the chart's right edge, as (day, left)."""
+    if end <= edge or end <= start:
+        return end, 0.0
+    return edge, left * (1 - (edge - start).days / (end - start).days)
+
+
+def _scope_marks(items, x, y):
+    """The days the scope changed, biggest first, none on top of another: the bumps a reader asks about."""
+    marks = []
+    for before, after in zip(items, items[1:]):
+        change = after["scope"] - before["scope"]
+        if change:
+            marks.append((abs(change), change, after))
+    placed, out = [], []
+    for _, change, item in sorted(marks, key=lambda m: (-m[0], m[2]["date"]))[:MOST_SCOPE_MARKS]:
+        at = x(item)
+        if all(abs(at - other) >= SCOPE_MARK_GAP for other in placed):
+            placed.append(at)
+            out.append(f'<text class="tick" x="{at:.1f}" y="{y(item["left"]) - 8:.1f}" text-anchor="middle">{"+" if change > 0 else "−"}{abs(change)}</text>')
+    return out
+
+
+def burndown(items, title, found, words):
+    """What is left, day by day, and where a line through the pace lands. `found` is what `forecast.data` returned; `words` is its headline."""
+    if not items:
+        raise PlanError("the table has no history to chart")
+    today = _day(found["as_of"])
+    points = [{"date": p["date"], "left": round(p["scope"] - p["weighted"], 3), "scope": p["scope"]} for p in items]
+    if _day(points[-1]["date"]) < today:
+        points.append({"date": found["as_of"], "left": points[-1]["left"], "scope": points[-1]["scope"]})
+    first = _day(points[0]["date"])
+    plot_w, plot_h = WIDTH - LEFT - BURNDOWN_RIGHT, HEIGHT - TOP - BOTTOM
+    likely = _day(found["likely"]) if found.get("likely") else None
+    sure = _day(found["sure"]) if found.get("sure") else None
+    deadline = _day(found["deadline"]["date"]) if found.get("deadline") else None
+    horizon = today + datetime.timedelta(days=max((today - first).days * HORIZON_FACTOR, HORIZON_DAYS))
+    edge = max([today] + [min(day, horizon) for day in (likely, sure, deadline) if day])
+    span = (edge - first).days
+    ticks = _y_ticks(max(math.ceil(max(p["left"] for p in points)), 1))
+    y_top = ticks[-1] or 1
+
+    def x_of_day(day):
+        return LEFT + (plot_w / 2 if span == 0 else plot_w * (day - first).days / span)
+
+    def x(item):
+        return x_of_day(_day(item["date"]))
+
+    def y(value):
+        return TOP + plot_h - plot_h * value / y_top
+
+    left_now = found["left"]
+    needed = bool(deadline and today < deadline <= edge and left_now)
+    scope_words = "The steps up are scope: a row added lifts the line, and moves the date." + (" Dotted: what the deadline needs." if needed else "")
+    subtitle = "Rows left over time, from the status table's git history."
+    if likely:
+        subtitle += f" Dashed: a line through the last {found['window_days']} days, not a promise."
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" height="{HEIGHT}" role="img" aria-labelledby="t d">',
+           f'<title id="t">{escape(title)}: burn-down</title>', f'<desc id="d">{escape(words)}</desc>', f"<style>{STYLE}</style>",
+           f'<rect x=".5" y=".5" width="{WIDTH - 1}" height="{HEIGHT - 1}" rx="8" fill="var(--surface)" stroke="var(--edge)"/>',
+           f'<text class="title" x="16" y="28">{escape(title)}: burn-down</text>', f'<text x="16" y="47">{escape(subtitle)}</text>',
+           f'<text x="16" y="67">{escape(words if not likely else scope_words)}</text>']
+    for value in ticks:
+        out.append(f'<line x1="{LEFT}" x2="{LEFT + plot_w}" y1="{y(value):.1f}" y2="{y(value):.1f}" stroke="var(--{"axis" if value == 0 else "grid"})"/>')
+        out.append(f'<text class="tick" x="{LEFT - 8}" y="{y(value) + 4:.1f}" text-anchor="end">{value}</text>')
+    x_days = _x_ticks([{"date": first.isoformat()}, {"date": edge.isoformat()}])
+    for i, day in enumerate(x_days):
+        anchor = "middle"
+        if len(x_days) > 1:
+            anchor = "start" if i == 0 else ("end" if i == len(x_days) - 1 else "middle")
+        with_year = i == 0 or day.year != x_days[i - 1].year
+        out.append(f'<text class="tick" x="{x_of_day(day):.1f}" y="{TOP + plot_h + 19}" text-anchor="{anchor}">{_date_words(day, with_year)}</text>')
+    if deadline and deadline <= edge:
+        at = x_of_day(deadline)
+        out.append(f'<line x1="{at:.1f}" x2="{at:.1f}" y1="{TOP}" y2="{TOP + plot_h}" stroke="var(--ink2)" stroke-dasharray="2 4"/>')
+        out.append(f'<text class="tick" x="{at + 5:.1f}" y="{TOP + 12}">deadline</text>')
+    origin = (x_of_day(today), y(left_now))
+    if needed:
+        out.append(f'<line x1="{origin[0]:.1f}" y1="{origin[1]:.1f}" x2="{x_of_day(deadline):.1f}" y2="{y(0):.1f}" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="2 4"/>')
+    if likely:
+        likely_day, likely_left = _toward(today, left_now, likely, edge)
+        sure_day, sure_left = _toward(today, left_now, sure, edge)
+        corner = [] if likely_left or not sure_left else [(x_of_day(edge), y(0))]
+        shape = [origin, (x_of_day(likely_day), y(likely_left))] + corner + [(x_of_day(sure_day), y(sure_left))]
+        out.append('<path d="M' + "L".join(f"{a:.1f} {b:.1f}" for a, b in shape) + 'Z" fill="var(--weighted)" fill-opacity=".14"/>')
+        out.append(f'<line class="line" x1="{origin[0]:.1f}" y1="{origin[1]:.1f}" x2="{x_of_day(likely_day):.1f}" y2="{y(likely_left):.1f}" stroke="var(--weighted)" stroke-dasharray="6 5"/>')
+    out.append(f'<path class="line" d="{_steps(points, x, y, "left")}" stroke="var(--weighted)"/>')
+    out.extend(_scope_marks(points, x, y))
+    out.append(f'<circle class="dot" cx="{origin[0]:.1f}" cy="{origin[1]:.1f}" r="5" fill="var(--weighted)"/>')
+    label_x = LEFT + plot_w + 14
+    label_y = TOP + 4
+    said = [(f"{left_now:g}", "rows left")]
+    if likely:
+        said.append((_date_words(likely, likely.year != today.year), "likely"))
+        said.append((_date_words(sure, sure.year != today.year), "85% sure"))
+    if deadline:
+        said.append((_date_words(deadline, deadline.year != today.year), "deadline"))
+    for value, name in said:
+        out.append(f'<text x="{label_x}" y="{label_y:.1f}"><tspan class="value">{escape(value)}</tspan> {name}</text>')
+        label_y += LABEL_GAP + 3
+    stride = max(1, len(points) // HOVER_LIMIT)
+    shown = points[::stride]
+    for i, item in enumerate(shown):
+        left = x(item)
+        right = x(shown[i + 1]) if i + 1 < len(shown) else x_of_day(today)
+        tip = f"{item['date']}: {item['left']:g} rows left of {item['scope']}"
         out.append(f'<rect x="{left:.1f}" y="{TOP}" width="{max(right - left, 1):.1f}" height="{plot_h}" fill="transparent"><title>{escape(tip)}</title></rect>')
     out.append("</svg>")
     return "\n".join(out) + "\n"

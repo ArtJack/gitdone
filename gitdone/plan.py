@@ -1,5 +1,6 @@
 """The plan file: everything about a project that its status table cannot say about itself."""
 import collections
+import datetime
 import difflib
 import errno
 import json
@@ -60,6 +61,7 @@ def _typed(data, key, expected, default):
 
 
 KIND_KEYS = {"name", "short", "phrase", "weight", "evidence"}
+FOCUS_KEYS = {"paths", "upkeep"}
 
 
 def _no_duplicates(pairs):
@@ -103,9 +105,30 @@ def _text(data, key, default=None):
     return value
 
 
+def _date(data, key):
+    """A day a plan names, as YYYY-MM-DD. Anything else would surface far from the plan, in the middle of somebody's morning."""
+    value = _text(data, key)
+    if value is None:
+        return None
+    try:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):  # newer Pythons read more shapes than the oldest one here
+            raise ValueError
+        return datetime.date.fromisoformat(value).isoformat()
+    except ValueError:
+        raise PlanError(f"{key}: expected a date like 2026-12-01, got {value!r}")
+
+
+def _strings(data, key):
+    value = _typed(data, key, list, [])
+    for item in value:
+        if not isinstance(item, str):
+            raise PlanError(f"{key}: expected a list of file names, got {item!r}")
+    return value
+
+
 def _no_misspelled_rules(data):
     """A plan may carry keys of its own for its sections. One no section reads that is nearly a rule's name is a rule being ignored in silence."""
-    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state")}
+    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state", "deadline", "requirements", "focus", "start")}
     sections = data.get("sections")
     used = {s["from"] for s in sections if isinstance(s, dict) and isinstance(s.get("from"), str)} if isinstance(sections, list) else set()
     for key in data:
@@ -183,6 +206,13 @@ class Plan:
         self.verdict_state = self._path(verdict_state) if verdict_state else None
         if self.verdict_state and _not_a_regular_file(self.verdict_state):
             raise PlanError(f"verdict_state: {verdict_state} is not a regular file")
+        self.deadline = _date(data, "deadline")
+        self.start = _date(data, "start")
+        self.requirements = _strings(data, "requirements")
+        self.focus = _typed(data, "focus", dict, {})
+        for key in self.focus:
+            if key not in FOCUS_KEYS:
+                raise PlanError(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}")
         self.generated_by = data.get("generated_by", "gitdone render")
         self.regenerate = data.get("regenerate", "gitdone render --write")
         self.noun = data.get("noun", "rows")
