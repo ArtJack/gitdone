@@ -228,8 +228,7 @@ the code it measures.
 
 **GitLab?** `MR !12` is verified through `glab`. So far that path is tested against a stub of `glab`, not a real GitLab; a report from one is welcome.
 
-**Windows?** The engine uses nothing platform-specific, and the hooks are `sh`, which Git for Windows runs. It is less proven there than on macOS and
-Linux.
+**Windows?** The suite passes there in CI, on the oldest and the newest Python. The tests that need a POSIX shell are left out, so the hooks, which are `sh` and which Git for Windows runs, are the less proven part.
 
 **No git at all?** It still renders and counts, and every claim stays unproven until there is a repository.
 
