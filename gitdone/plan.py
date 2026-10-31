@@ -146,7 +146,7 @@ def symlink_in(base, value):
     if os.path.isabs(value):
         return os.path.islink(value)
     logical = os.path.normpath(os.path.join(os.path.realpath(base), value))
-    return os.path.realpath(logical) != logical
+    return os.path.normcase(os.path.realpath(logical)) != os.path.normcase(logical)  # on a disk that ignores case, another spelling is no link
 
 
 def _same_file(one, other):

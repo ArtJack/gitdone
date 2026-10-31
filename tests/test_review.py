@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest import mock
 
-from helpers import ENGINE, ROOT, clean_env, commit, git, needs_sh
+from helpers import ENGINE, ROOT, clean_env, commit, git, needs_sh, not_on_windows
 from gitdone import cli, gitio
 from gitdone.plan import Plan, PlanError
 from gitdone.table import parse
@@ -1043,6 +1043,7 @@ class SmallerRules(Small):
         self.assertIn("rows 1, 2, 3 have no note", out)
 
     def test_a_short_id_two_commits_share_settles_on_the_one_on_the_branch(self):
+        not_on_windows(self, "the search for a shared short id makes file names that cannot exist there")
         self.c("base")
         parent = git(self.repo, "rev-parse", "HEAD")
         blob = subprocess.run(["git", "-C", str(self.repo), "hash-object", "-w", "--stdin"], input="x\n", capture_output=True, text=True, env=clean_env()).stdout.strip()
@@ -1148,6 +1149,7 @@ class SmallerRules(Small):
         self.assertLess(time.perf_counter() - started, 3)
 
     def test_a_revert_message_of_blank_lines_costs_nothing(self):
+        not_on_windows(self, "a command line that long is refused there")
         sha = self.c("a")
         self.c("b", "x" + "\n" * 60000 + "This reverts commit 0123456.")
         self.table(f"| 1 | x | Live | `{sha}` |")
@@ -1348,6 +1350,7 @@ class InitHoldsCheckedItemsToGit(Small):
         self.assertEqual(code, 0, out)
         self.assertTrue((self.repo / ".github" / "workflows" / "status.yml").exists())
         self.assertNotIn("install-ci", out, "no need to suggest what was just done")
+        self.assertIn(".github", [line for line in out.splitlines() if "git add" in line][0])  # or the first commit leaves the gate behind
 
 
 class WhatChangedInTheRulesIsShort(unittest.TestCase):
@@ -2013,6 +2016,7 @@ class TheThirdPass(Small):
         self.assertIn(f"commit {first} was reverted", out)
 
     def test_a_squash_of_empty_or_oddly_named_files_stops_nothing(self):
+        not_on_windows(self, "no file there can have those characters in its name")
         for name in ("__init__.py", 'we"ird.txt'):
             with self.subTest(name):
                 repo = self.tmp / f"r{abs(hash(name))}"
@@ -2032,6 +2036,7 @@ class TheThirdPass(Small):
                 self.assertEqual(code, 0, out)
 
     def test_ours_of_a_commit_with_an_oddly_named_file(self):
+        not_on_windows(self, "no file there can have those characters in its name")
         self.c("base")
         git(self.repo, "checkout", "-qb", "side")
         (self.repo / 'we"ird.txt').write_text("feature\n")
@@ -2265,6 +2270,7 @@ class TheFourthPass(Small):
         self.assertEqual(list(table.rows), [1, 2])
 
     def test_a_file_name_with_a_newline_shifts_no_answer(self):
+        not_on_windows(self, "no file there can have a newline in its name")
         self.c("base")
         git(self.repo, "checkout", "-qb", "side")
         (self.repo / "a\nb.txt").write_text("x\n")

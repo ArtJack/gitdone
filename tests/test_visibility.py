@@ -3,7 +3,7 @@ import json
 import unittest
 import xml.dom.minidom
 
-from helpers import ProjectCase, git
+from helpers import ProjectCase, delete_tree, git
 from gitdone import badge, chart, portfolio, report, scaffold, table as tables
 from gitdone.discover import POINTER
 
@@ -141,8 +141,7 @@ class TheCommand(History):
         self.assertTrue(target.read_text().startswith("<svg"))
 
     def test_a_table_outside_git_is_a_clear_error(self):
-        import shutil
-        shutil.rmtree(self.project / ".git")
+        delete_tree(self.project / ".git")
         code, _, err = self.cli("chart")
         self.assertEqual(code, 2)
         self.assertIn("no history to chart", err)
