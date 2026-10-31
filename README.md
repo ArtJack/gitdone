@@ -238,7 +238,9 @@ Linux.
 ## This repository tracks itself
 
 [`STATUS.md`](STATUS.md) is this project's own view, under its own gate, with this roadmap as its scope. The rows that are Live name the commits that
-made them so.
+made them so. Its burn-up, published by [the Action](docs/ci.md) on every push:
+
+<img src="https://raw.githubusercontent.com/ArtJack/gitdone/status-badges/burnup.svg" width="640" alt="This repository's own burn-up chart, from its status table's git history.">
 
 ## Contributing
 
