@@ -83,7 +83,7 @@ def data(plan, offline=False):
     rows = rows_data(plan, offline=offline)
     by_number = {r["row"]: r for r in rows}
     found = requirements.coverage(plan, table)
-    entries = [{"id": item.ident, "words": item.words, "where": item.where(), "rows": [r.num for r in mine]} for item, mine in found["items"]]
+    entries = [{"id": item.ident, "words": item.words, "where": item.where(), "rows": [r.num for r in mine], "looks_like": item.near.num if item.near is not None else None} for item, mine in found["items"]]
     top = plan.strict_kind.name
     live = [r for r in rows if r["kind"] == top]
     finished = [e for e in entries if e["rows"] and all(by_number[n]["kind"] == top for n in e["rows"])]
@@ -144,7 +144,8 @@ def markdown(plan, offline=False, today=None):
         for entry in found["requirements"]:
             label = _cell(f"{entry['id']} {entry['words']}".strip() if entry["id"] else entry["words"])
             if not entry["rows"]:
-                L.append(f"| {label} | {_cell(entry['where'])} | **no row** | | | |")
+                near = f" (row {entry['looks_like']} looks like it)" if entry["looks_like"] else ""
+                L.append(f"| {label} | {_cell(entry['where'])} | **no row**{near} | | | |")
             for num in entry["rows"]:
                 row = by_number[num]
                 L.append(f"| {label} | {_cell(entry['where'])} | {num} | {_cell(row['kind'])} | {_evidence_cell(row)} | {_tests_cell(row)} |")

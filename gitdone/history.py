@@ -157,7 +157,7 @@ def _focus_since(plan, since, today):
             found = focus.data(plan, revisions=f"{since}..HEAD", today=today)
     except Exception:
         return None
-    return {key: found[key] for key in ("commits", "on_plan", "upkeep", "off_plan")}
+    return {key: found[key] for key in ("commits", "on_plan", "unclear", "upkeep", "off_plan")}
 
 
 def delta(plan, since=None, today=None):
@@ -175,7 +175,7 @@ def delta(plan, since=None, today=None):
     if d["uncommitted_changes"]:
         line += " The table has uncommitted changes, counted here."
     if d["focus"] and d["focus"]["commits"]:
-        line += f" Focus: {d['focus']['on_plan']} of {d['focus']['commits']} commits on plan, {d['focus']['upkeep']} upkeep, {d['focus']['off_plan']} off plan."
+        line += f" Focus: {d['focus']['on_plan']} of {d['focus']['commits']} commits on plan, {d['focus']['unclear']} unclear, {d['focus']['upkeep']} upkeep, {d['focus']['off_plan']} off plan."
     return line
 
 

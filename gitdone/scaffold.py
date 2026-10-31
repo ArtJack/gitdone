@@ -59,7 +59,7 @@ This project tracks completion with [gitdone](https://github.com/ArtJack/gitdone
 
 - At the start of a session, run `gitdone`. It prints where the project stands, what comes next, the likely date and where the
   recent commits went. `gitdone next` lists the rows to work on now.
-- Work on those rows. Name the row in the commit message (`row 12`), so that the work traces to it. Anything else is a change of scope:
+- Work on those rows. Name the row in the commit message (`row 12`), so that the work traces to it. Work on no row is a change of scope:
   say so before starting it. `gitdone add "<what it is>"` puts it in the plan, and it says what that does to the date.
 - `status-table.md` is the only place a status changes. `STATUS.md` is generated: never edit it by hand.
 - When work is on the default branch, move its row with `gitdone shipped <row> <commit or PR>`. Use
@@ -114,12 +114,12 @@ def sections_from_checklist(text):
             if opening and opening.group(1)[0] == fence:
                 fence = None
             continue
-        head = HEADING.match(line)
+        item = CHECK_ITEM.match(line)
+        from_spec = None if item else _requirement_in(line)
+        head = None if from_spec else HEADING.match(line)
         if head:
             heading, current = _clean(head.group(1)), None
             continue
-        item = CHECK_ITEM.match(line)
-        from_spec = None if item else _requirement_in(line)
         if not item and not from_spec:
             continue
         if current is None:

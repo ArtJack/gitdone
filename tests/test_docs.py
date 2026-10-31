@@ -148,7 +148,7 @@ class TheTimelineInTheReadme(unittest.TestCase):
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
         with tempfile.TemporaryDirectory() as folder:
-            cls.block, cls.picture = cls.module.produce(folder)
+            cls.block, cls.picture, cls.samples = cls.module.produce(folder)
 
     def test_the_readme_block_is_what_the_commands_print(self):
         shown = README[README.index(self.module.START) + len(self.module.START):README.index(self.module.END)].strip()
@@ -161,6 +161,12 @@ class TheTimelineInTheReadme(unittest.TestCase):
     def test_it_tells_the_story_it_is_there_for(self):
         for words in ("not a promise", "85% sure", "That moves the likely date", "Off plan", "Time "):
             self.assertIn(words, self.block)
+
+    def test_the_documents_samples_are_what_the_commands_print(self):
+        text = (ROOT / "docs" / "timeline.md").read_text(encoding="utf-8")
+        for name, sample in self.samples.items():
+            shown = text[text.index(f"<!-- {name}:start -->") + len(f"<!-- {name}:start -->"):text.index(f"<!-- {name}:end -->")].strip()
+            self.assertEqual(self.module.normalized(shown), self.module.normalized(sample))
 
 
 def shipped_files():

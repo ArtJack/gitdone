@@ -29,7 +29,7 @@ def _history():
 
 
 def produce(folder):
-    """(the console block, the burn-down) from a history built in `folder`."""
+    """(the console block, the burn-down, the docs' samples) from a history built in `folder`."""
     repo = pathlib.Path(folder) / "bramble"
     _history().main([str(repo)])
     plan = Plan(repo / "plan.json")
@@ -42,25 +42,31 @@ def produce(folder):
     drift = focus.data(plan, today=TODAY)
     block = ["```console", "$ gitdone eta", forecast.text(found), "", '$ gitdone add "Self-service printing"', f"added row {number}", moved, "",
              "$ gitdone focus", focus.text(drift), "```"]
-    return "\n".join(block), picture
+    samples = {"eta": "```text\n" + forecast.text(found).split("\n\nIn the plan's order")[0] + "\n```", "focus": "```text\n" + focus.text(drift).split("\n\nOff plan or unclear")[0] + "\n```"}
+    return "\n".join(block), picture, samples
 
 
-def spliced(readme, block):
-    head, _, rest = readme.partition(START)
-    _, _, tail = rest.partition(END)
-    return f"{head}{START}\n{block}\n{END}{tail}"
+def spliced(text, block, start=START, end=END):
+    head, _, rest = text.partition(start)
+    _, _, tail = rest.partition(end)
+    return f"{head}{start}\n{block}\n{end}{tail}"
 
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     with tempfile.TemporaryDirectory() as folder:
-        block, picture = produce(folder)
+        block, picture, samples = produce(folder)
     if "--write" not in args:
         print(block)
         return 0
     readme = ROOT / "README.md"
     readme.write_text(spliced(readme.read_text(encoding="utf-8"), block), encoding="utf-8")
     (ROOT / "docs" / "img" / "bramble-burndown.svg").write_text(picture, encoding="utf-8")
+    doc = ROOT / "docs" / "timeline.md"
+    text = doc.read_text(encoding="utf-8")
+    for name, sample in samples.items():
+        text = spliced(text, sample, f"<!-- {name}:start -->", f"<!-- {name}:end -->")
+    doc.write_text(text, encoding="utf-8")
     return 0
 
 

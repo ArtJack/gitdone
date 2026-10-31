@@ -22,6 +22,7 @@ NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CV
 class Item:
     def __init__(self, ident, words, source, line):
         self.ident, self.words, self.source, self.line = ident, words, source, line
+        self.near = None
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -100,51 +101,43 @@ class _Rows:
     """The rows, indexed once, so that a long spec against a long table costs what the two of them hold, and not their product."""
 
     def __init__(self, rows):
-        self.by_id, self.by_name, self.by_word, self.words = {}, {}, {}, {}
+        self.by_id, self.by_words, self.by_word, self.words, self.rows = {}, {}, {}, {}, {r.num: r for r in rows}
         for row in rows:
             for ident in set(ID_IN_TEXT.findall(f"{row.name} {row.note}")):
                 self.by_id.setdefault(ident, []).append(row)
-            self.by_name.setdefault(" ".join(row.name.lower().split()), []).append(row)
             ours = focus.words_of(row.name)
             self.words[row.num] = ours
+            self.by_words.setdefault(frozenset(ours) or " ".join(row.name.lower().split()), []).append(row)
             for word in ours:
                 self.by_word.setdefault(word, []).append(row)
 
-    def _by_words(self, words):
-        same = self.by_name.get(" ".join(words.lower().split()))
-        if same:
-            return list(same)
-        theirs = focus.words_of(words)
-        if not theirs:
-            return []
-        rarest = sorted((w for w in theirs if w in self.by_word), key=lambda w: (len(self.by_word[w]), w))[:2]
-        found = {}
-        for word in rarest:
-            for row in self.by_word[word][:200]:
-                found[row.num] = row
-        return [found[n] for n in sorted(found) if _same_work(theirs, self.words[n])]
-
     def for_item(self, item):
+        """A row holds a requirement if it names its id, or says the same words. Nothing weaker counts, because a guess must not close a gap."""
         if item.ident and item.ident in self.by_id:
             return list(self.by_id[item.ident])
-        return self._by_words(item.words)
+        return list(self.by_words.get(frozenset(focus.words_of(item.words)) or " ".join(item.words.lower().split()), []))
 
-
-def _same_work(theirs, ours):
-    """The same words, or three quarters of the shorter one's and at least two."""
-    if not theirs or not ours:
-        return False
-    shared = len(theirs & ours)
-    return theirs == ours or (shared >= 2 and shared / min(len(theirs), len(ours)) >= 0.75)
+    def looks_like(self, item):
+        """The row that shares the most of a requirement's words, for the suggestion only. Two words, or the only one."""
+        theirs = focus.words_of(item.words)
+        best, most = None, 0
+        for word in sorted((w for w in theirs if w in self.by_word), key=lambda w: (len(self.by_word[w]), w))[:3]:
+            for row in self.by_word[word][:200]:
+                shared = len(theirs & self.words[row.num])
+                if shared > most or (shared == most and best is not None and row.num < best.num):
+                    best, most = row, shared
+        return best if best is not None and (most >= 2 or len(theirs) == 1) else None
 
 
 def coverage(plan, table):
-    """{items: [(item, rows)], without: [items], unasked: [rows], problems}. Empty when the plan names no requirement file."""
+    """{items: [(item, rows)], without: [items], unasked: [rows], problems}. Empty when the plan names no requirement file. An item with no row has `near`, the row it looks like."""
     items, problems = read(plan)
     rows = [r for d in table.domains for r in d.rows if not r.prose]
     index = _Rows(rows)
     pairs = [(item, index.for_item(item)) for item in items]
     answered = {r.num for _, mine in pairs for r in mine}
+    for item, mine in pairs:
+        item.near = index.looks_like(item) if not mine else None
     return {"items": pairs, "without": [item for item, mine in pairs if not mine],
             "unasked": [r for r in rows if r.num not in answered] if items else [], "problems": problems}
 
@@ -152,7 +145,12 @@ def coverage(plan, table):
 def what_to_do(item):
     """The next step for a requirement with no row. The words come from a file a clone can hold, so what is printed cannot run anything if pasted."""
     add = f"gitdone add {shlex.quote(item.label()[:60])}"
-    return f"{add}, or put {item.ident} in the note of the row that holds it" if item.ident else add
+    near = getattr(item, "near", None)
+    if near is not None and item.ident:
+        return f"row {near.num} looks like it: gitdone link {near.num} {item.ident}. If it is not: {add}"
+    if near is not None:
+        return f"row {near.num} looks like it: give the two the same words. If it is not: {add}"
+    return f"{add}, or if a row holds it: gitdone link <row> {item.ident}" if item.ident else add
 
 
 def opener_line(plan, table):
@@ -164,4 +162,4 @@ def opener_line(plan, table):
     if not count:
         return None
     first = found["without"][0]
-    return f"⚠ {count} requirement{'' if count == 1 else 's'} {'has' if count == 1 else 'have'} no row, so the percent and the date leave {'it' if count == 1 else 'them'} out: {first.label()[:60]} ({first.where()})"
+    return f"⚠ {count} requirement{'' if count == 1 else 's'} {'has' if count == 1 else 'have'} no row, so the percent and the date may leave {'it' if count == 1 else 'them'} out: {first.label()[:60]} ({first.where()})"

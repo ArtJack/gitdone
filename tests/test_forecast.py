@@ -106,7 +106,7 @@ class TheLine(HistoryCase):
         self.steady(4)
         words = forecast.headline(self.data())
         self.assertIn("not a promise", words)
-        self.assertIn("85% sure", words)
+        self.assertIn("with all work", words)
 
     def test_the_same_history_gives_the_same_answer(self):
         self.steady(4)
@@ -159,7 +159,7 @@ class TheLine(HistoryCase):
         self.commit("2026-02-15")
         found = self.data()
         self.assertGreater(found["largest_day_share"], 0.5)
-        self.assertIn("read the date loosely", forecast.text(found))
+        self.assertIn("read the dates loosely", forecast.text(found))
 
     def test_a_commit_dated_tomorrow_counts_today(self):
         self.commit("2026-02-01", "first")
@@ -262,20 +262,21 @@ class Scope(HistoryCase):
         self.assertTrue(found["scope"]["never_catches_up"])
         self.assertIn("never catches up", forecast.text(found))
 
-    def test_scope_growing_slowly_gives_a_later_date(self):
+    def test_scope_growing_slowly_says_the_two_rates_and_that_the_date_assumes_it_stops(self):
         self.steady(5)
         for n in range(1, 6):
             self.rows[n] = (self.rows[n][0], "Live")
         self.commit("2026-02-26")
-        for n, day in zip((11, 12), ("2026-02-07", "2026-02-27")):
-            self.rows[n] = (f"Thing {n}", "Not built")
+        self.rows[11] = ("Thing 11", "Not built")
         self.commit("2026-02-27")
-        self.rows[13] = ("Thing 13", "Not built")
+        self.rows[12] = ("Thing 12", "Not built")
         self.commit("2026-02-28")
         found = self.data()
-        grown = found["scope"]["if_it_goes_on"]
-        self.assertIsNotNone(grown)
-        self.assertGreater(grown["likely"], found["likely"])
+        self.assertFalse(found["scope"]["never_catches_up"])
+        words = forecast.text(found)
+        self.assertIn("rows a day against", words)
+        self.assertIn("The dates assume it stops", words)
+        self.assertIn("if the scope stops growing", forecast.headline(found))
 
     def test_scope_that_grew_once_is_an_event_and_is_not_extrapolated(self):
         self.steady(4)
@@ -284,7 +285,7 @@ class Scope(HistoryCase):
         self.commit("2026-02-26")
         found = self.data()
         self.assertEqual(found["scope"]["added"], 30)
-        self.assertIsNone(found["scope"]["if_it_goes_on"])
+        self.assertFalse(found["scope"]["keeps_growing"])
         self.assertFalse(found["scope"]["never_catches_up"])
 
 
@@ -296,18 +297,18 @@ class Deadline(HistoryCase):
         found = self.data()
         late = (datetime.date.fromisoformat(found["likely"]) - datetime.date(2026, 4, 1)).days
         self.assertEqual(found["deadline"]["late_by"], late)
-        self.assertIn(f"likely {late} days late", forecast.text(found))
+        self.assertIn(f"likely {late} days late", forecast.text(found))  # no row is Live, so there is one line to speak of
 
     def test_it_says_what_pace_it_needs(self):
         self.steady(4)
         found = self.data()
         self.assertEqual(found["deadline"]["days_left"], 31)
         self.assertEqual(found["deadline"]["needs_per_day"], round(8.4 / 31, 3))
-        self.assertIn("It needs 0.27 rows a day from here; the pace is", forecast.text(found))
+        self.assertIn("It needs 0.32 Live rows a day, or 0.27 of all work from here.", forecast.text(found))
 
     def test_with_no_date_yet_it_still_says_the_days_and_the_pace_it_needs(self):
         self.commit("2026-02-28", "first")
-        self.assertIn("Deadline Apr 1: 31 days left. It needs 0.32 rows a day from here.", forecast.text(self.data()))
+        self.assertIn("Deadline Apr 1: 31 days left. It needs 0.32 of all work from here.", forecast.text(self.data()))
 
     def test_a_deadline_gone_by_says_so(self):
         self.write_plan(deadline="2026-02-01")
@@ -317,6 +318,7 @@ class Deadline(HistoryCase):
     def test_it_burns_work_against_time(self):
         self.steady(4)
         words = forecast.text(self.data())
+        self.assertIn("  Live ", words)
         self.assertIn("  Work ", words)
         self.assertIn("  Time ", words)
         self.assertEqual(self.data()["deadline"]["start"], "2026-02-01")
@@ -357,6 +359,7 @@ class Workstreams(HistoryCase):
         self.commit("2026-02-01", "first")
         words = forecast.text(self.data())
         self.assertRegex(words, r"P1 Core\s+done")
+        self.assertIn("In the plan's order, with all work:", words)
 
 
 class Group(HistoryCase):
@@ -415,14 +418,14 @@ class Commands(ProjectCase):
         self.plain_plan()
         code, out, err = self.cli("add", "A new thing", "--domain", "1")
         self.assertEqual(code, 0, err)
-        self.assertIn("That moves the likely date from", out)
+        self.assertIn("That moves the likely date with all work, +", out)
 
     def test_remove_says_what_it_did_to_the_date(self):
         self.moving()
         self.plain_plan()
         code, out, err = self.cli("remove", "16")
         self.assertEqual(code, 0, err)
-        self.assertIn("That moves the likely date from", out)
+        self.assertIn("That moves the likely date with all work, -", out)
 
     def test_add_with_no_date_yet_says_nothing_about_one(self):
         self.plain_plan()

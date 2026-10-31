@@ -128,16 +128,21 @@ A percent does not say when, and it does not say why a month became three. These
 <!-- timeline:start -->
 ```console
 $ gitdone eta
-Likely done Apr 14, 85% sure by Apr 29: a line through the last 28 days, not a promise.
-Counting only Live rows: likely Jun 23, 85% sure by Jul 31.
-Left: 8.7 of 16 rows (weighted 46%, strict 25%).
-Pace: 0.21 rows a day; rows moved on 6 of 28 days. 71% of that stopped short of Live, which only a note holds up.
+Likely done Jun 23 on Live rows alone, or Apr 14 with all work: a line through the last 28 days, not a promise.
+
+              Likely  85% sure  Left      A day
+  Live alone  Jun 23  Jul 31    12 rows   0.11
+  All work    Apr 14  Apr 29    8.7 rows  0.21
+
+Scope now: 16 rows, strict 25%, weighted 46%.
+Rows moved on 6 of 28 days. 71% of that stopped short of Live.
 Scope: 5 rows added, 0 taken out in that time.
-Deadline Apr 15: likely 1 day early, or 69 days late counting only Live rows. It needs 0.2 rows a day from here; the pace is 0.21.
+Deadline Apr 15: 69 days late on Live rows alone, 1 day early with all work. It needs 0.28 Live rows a day, or 0.2 of all work from here.
+  Live █████░░░░░░░░░░░░░░░ 25%
   Work █████████░░░░░░░░░░░ 46%
   Time ███████████░░░░░░░░░ 54%, Jan 12 to Apr 15
 
-In the plan's order:
+In the plan's order, with all work:
   S1 Reading lists and renewals  0.4 left, likely Mar 5
   S2 Returns                     1.5 left, likely Mar 13
   S3 Accounts                    1.6 left, likely Mar 20
@@ -145,22 +150,22 @@ In the plan's order:
 
 $ gitdone add "Self-service printing"
 added row 17
-That moves the likely date from Apr 14 to Apr 19 (+5 days).
+That moves the likely date on Live rows alone, +10 days, Jun 23 to Jul 3, and with all work, +5 days, Apr 14 to Apr 19.
 
 $ gitdone focus
-Last 14 days: 13 commits.
-  On plan    8   62%  12 lines  rows 7 (2), 10 (2), 3 (1), 6 (1), 9 (1), 15 (1)
-  Upkeep     2   15%   2 lines
-  Off plan   3   23%   3 lines  in printer (2), theme (1)
+Last 14 days: 13 commits, 1,437 lines changed.
+  On plan    8   62%    373 lines   26%  rows 7 (2), 10 (2), 3 (1), 6 (1), 9 (1), 15 (1)
+  Upkeep     2   15%     34 lines    2%
+  Off plan   3   23%  1,030 lines   72%  in printer (620 lines), theme (410 lines)
 
-Off plan, newest first:
-  1cb92cf Rewrite the receipt printer driver again (printer)
-  336e685 Try a new theme engine for the kiosk (theme)
-  35f4148 Rewrite the receipt printer driver (printer)
+Off plan or unclear, newest first:
+  2fb7709 Rewrite the receipt printer driver again (280 lines, printer)
+  f8ebf86 Try a new theme engine for the kiosk (410 lines, theme)
+  1fbaa7d Rewrite the receipt printer driver (340 lines, printer)
 
 Next on the plan: S1 (Reading lists and renewals). It needs the head librarian's word at release.
 Off plan is not wrong, only unplanned. If it belongs, `gitdone add "<what it is>"` puts it in the scope, and the date moves.
-To tie a commit to a row, name the row in its message: row 12.
+To tie a commit to a row, name the row in its message: row 3.
 ```
 <!-- timeline:end -->
 
@@ -177,11 +182,11 @@ says what it is. [How each is worked out, and what it cannot tell](docs/timeline
   does not touch the tracker. Sixty claims in a repository of a thousand commits take about 0.2 seconds.
 - **Claims that can stop holding.** Each run checks each row again. A reverted commit, through `git revert` or GitHub's button, turns its
   row into a failure until someone says what is true now, and the headline says so.
-- **A date with its range, and what a feature costs.** `eta` draws a line through the table's own history and says it is a line, and a second one through Live rows alone, because a weight is a claim too. `add` and `remove` say what they did to it. With a
+- **A date with its range, and what a feature costs.** `eta` draws a line through the table's own history and says it is a line: one on Live rows alone, and one with all work, as the percent has strict and weighted. `add` and `remove` say what they did to it. With a
   deadline, it says how late, and burns time against work.
-- **Focus.** `focus` sorts recent commits into on plan, upkeep and off plan, with the reason for each. `next` lists the rows to work on now. A hook says when a commit was off plan, and the
+- **Focus.** `focus` sorts recent commits into on plan, unclear, upkeep and off plan, with the reason for each. `next` lists the rows to work on now. A hook says when a commit was off plan, and the
   opener says the numbers when an agent starts a session.
-- **A traceability matrix nobody keeps by hand.** `matrix` ties each requirement in your spec to its row, evidence and tests, and names the two gaps: a requirement with no row, and a row nobody asked for.
+- **A traceability matrix read from git.** `matrix` ties each requirement in your spec to its row, evidence and tests, and names the two gaps: a requirement no row names, and a row nobody asked for.
 - **A burn-up chart from your git history,** from the table's first commit on, with the scope line visible when it grows. It is the record, so it carries no forecast. `chart --burndown` is the one that does.
 
   <img src="docs/img/bramble-burnup.svg" width="640" alt="A burn-up chart for a fictional project: 16 rows in scope, 46 percent weighted, 25 percent strict.">
@@ -221,9 +226,10 @@ Measured from the code, and [`SECURITY.md`](SECURITY.md) has the rest.
 | `rows` | List rows. `--open`, `--kind`, `--domain` |
 | `check` | The gate. Plain, it fails only on a proven contradiction. `--strict`, what the hook and the Action run, fails on anything not checked. `--offline`, `--if-staged`. [Rules and exit codes](docs/gate.md) |
 | `next` | What to work on now: the next workstream's open rows |
-| `eta` | When it will be done if the work goes on as it has, with a range, the scope's effect and the deadline. `--days`, `--group` |
-| `focus` | Where the commits went: on plan, upkeep or off plan. `--days`, `--all` |
+| `eta` | When it will be done if the work goes on as it has, on Live rows alone and with all work, with a range, the scope's effect and the deadline. `--days`, `--group` |
+| `focus` | Where the commits went: on plan, unclear, upkeep or off plan. `--days`, `--all` |
 | `matrix` | A traceability matrix: requirement, row, evidence, tests. `--out`, `--offline` |
+| `link <row> <id>` | Tie a requirement to a row, by putting its id in the row's note. The status does not change |
 | `week [since]` | What moved since a date, a span or a commit, from the table's git history |
 | `render`, `counts` | Print the view or the counts table. `render --write` writes the view; `counts --write` updates a counts table you pasted into the table |
 | `chart` | The burn-up: `--out FILE` for an SVG, `--csv`, `--json`, `--group`. `--burndown` draws what is left, with `eta`'s line through it |
@@ -280,7 +286,7 @@ branch, not that the commit holds the feature. The claim and its commit sit on o
 **Is the date a promise?** No, and the same sentence says so. `eta` is a line through the table's own history, with a range. It is there for one decision: cut the scope, or move the date. With too
 little history it gives no date. The burn-up stays a record, and the view never shows a forecast. [What it cannot tell](docs/timeline.md#what-it-cannot-tell).
 
-**Can `focus` stop a commit?** No. Off plan is not wrong, only unplanned. The hook says one line after the commit, and `--no-focus` leaves it out. The numbers exist so that someone can ask, while it still matters.
+**Can `focus` stop a commit?** No. Off plan is not wrong, only unplanned. The hook says one line after the commit, and `--no-focus` takes it out. The numbers exist so that someone can ask, while it still matters.
 
 **We squash-merge.** Cite the squash commit, or the pull request. A branch's old tip is not on the default branch.
 

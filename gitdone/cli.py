@@ -340,6 +340,15 @@ def cmd_mark(args):
     return code
 
 
+def cmd_link(args):
+    from . import edit
+    plan = _plan(args)
+    code = _refusable(lambda: edit.link(plan, args.row, args.id))
+    if code == 0:
+        print(_to_commit(plan))
+    return code
+
+
 def cmd_doctor(args):
     from . import doctor
     path = args.plan or discover.find_plan()
@@ -381,8 +390,17 @@ def _init_sections(args):
 
 
 def _source_inside(args):
-    """The checklist the rows came from stays what they answer to: when it grows and the table does not, the gate says so. Only a file of this project can be named."""
+    """A spec the rows came from stays what they answer to: when it grows and the table does not, the gate says so. A file of this project only, and one with ids:
+    a living to-do list is not a list of requirements, and every ordinary task on it would read as a gap.
+    """
+    from . import requirements
     if not args.from_checklist:
+        return None
+    try:
+        items = requirements.parse(read_file(args.from_checklist), args.from_checklist)
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not any(item.ident for item in items):
         return None
     here = os.path.realpath(args.dir)
     source = os.path.realpath(args.from_checklist)
@@ -724,6 +742,9 @@ def _parser():
     sub.add_argument("--all", action="store_true", help="every commit, and why it counts as it does")
     sub.add_argument("--last", action="store_true", help="one line if the last commit was off plan, and nothing otherwise: what the post-commit hook runs")
     command("next", cmd_next, "What to work on now: the next workstream's open rows, and nothing else.", as_data="the same as data")
+    sub = command("link", cmd_link, "Put a requirement's id in a row's note, where a later move keeps it. The status does not change.")
+    sub.add_argument("row", type=_row_number)
+    sub.add_argument("id", help="the requirement's id, like REQ-12")
     sub = command("matrix", cmd_matrix, "A traceability matrix from the plan, the table and git: requirement, row, evidence, tests.", as_data="the same as data")
     sub.add_argument("--out", help="write here instead of printing")
     sub.add_argument("--offline", action="store_true", help="do not call gh or glab")
