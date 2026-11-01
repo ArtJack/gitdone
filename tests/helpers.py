@@ -37,11 +37,16 @@ pathlib.Path.read_text, pathlib.Path.write_text = _read_text, _write_text
 IDENTITY = ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false"]
 
 
-# A stranger's global git config (a hooks path, signed tags) must not reach the suite, or the suite reach it.
+# A stranger's global git config (a hooks path, signed tags) must not reach the suite, or the suite reach it. Git's upkeep in the background stays out of it too:
+# it can take a file away while a test is deleting the folder that holds it.
 # Nor may the run the suite happens to be in: on a tag, GITHUB_REF_NAME is the tag, and the engine reads it. A test that wants one sets it.
 for _name in [k for k in os.environ if k.startswith("GITHUB_")]:
     del os.environ[_name]
-os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
+_handle, _config = tempfile.mkstemp(suffix=".gitconfig")
+with os.fdopen(_handle, "w", encoding="utf-8") as _file:
+    _file.write("[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n")
+atexit.register(os.unlink, _config)
+os.environ["GIT_CONFIG_GLOBAL"] = _config
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 ISOLATED = ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
 
@@ -68,8 +73,9 @@ def commit(repo, name, text, message="change", env=None):
 def delete_tree(path):
     """Everything under a folder, including what git keeps read-only, which Windows will not delete as it stands."""
     def again(remove, name, _):
-        os.chmod(name, stat.S_IWRITE)
-        remove(name)
+        with contextlib.suppress(FileNotFoundError):  # gone already, and that was the point
+            os.chmod(name, stat.S_IWRITE)
+            remove(name)
     shutil.rmtree(path, onerror=again)
 
 
