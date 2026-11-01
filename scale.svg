@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 333" width="760" height="333" role="img" aria-labelledby="t d">
 <title id="t">GitDone: how far along</title>
-<desc id="d">All: strict 80%, 40 of 50 rows, weighted 84%</desc>
+<desc id="d">All: strict 84%, 42 of 50 rows, weighted 86%</desc>
 <style>
 :root{--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#6f6d68;--grid:#e1e0d9;--axis:#c3c2b7;--edge:rgba(11,11,11,.10);--strict:#2a78d6;--weighted:#eb6834;--scope:#52514e}
 @media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#a3a198;--grid:#2c2c2a;--axis:#383835;--edge:rgba(255,255,255,.10);--strict:#3987e5;--weighted:#d95926;--scope:#c3c2b7}}
@@ -22,11 +22,11 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <text class="tick" x="744" y="67" text-anchor="end">Weighted</text>
 <text x="16" y="96" class="value">All</text>
 <rect x="290" y="86" width="340" height="12" rx="6" fill="var(--grid)"/>
-<rect x="290" y="86" width="285.6" height="12" rx="6" fill="var(--weighted)"/>
-<rect x="290" y="86" width="272.0" height="12" rx="6" fill="var(--strict)"/>
-<text class="value" x="680" y="96" text-anchor="end">80%</text>
-<text class="value" x="744" y="96" text-anchor="end">84%</text>
-<rect x="0" y="78.5" width="760" height="27" fill="transparent"><title>All: 40 of 50 rows strict, 84% weighted</title></rect>
+<rect x="290" y="86" width="293.8" height="12" rx="6" fill="var(--weighted)"/>
+<rect x="290" y="86" width="285.6" height="12" rx="6" fill="var(--strict)"/>
+<text class="value" x="680" y="96" text-anchor="end">84%</text>
+<text class="value" x="744" y="96" text-anchor="end">86%</text>
+<rect x="0" y="78.5" width="760" height="27" fill="transparent"><title>All: 42 of 50 rows strict, 86% weighted</title></rect>
 <text x="28" y="123">1. The engine</text>
 <rect x="290" y="115" width="340" height="8" rx="4" fill="var(--grid)"/>
 <rect x="290" y="115" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
@@ -43,11 +43,11 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <rect x="0" y="132.5" width="760" height="27" fill="transparent"><title>2. Installs anywhere: 8 of 8 rows strict, 100% weighted</title></rect>
 <text x="28" y="177">3. Onboarding</text>
 <rect x="290" y="169" width="340" height="8" rx="4" fill="var(--grid)"/>
-<rect x="290" y="169" width="289.0" height="8" rx="4" fill="var(--weighted)"/>
-<rect x="290" y="169" width="255.0" height="8" rx="4" fill="var(--strict)"/>
-<text class="value" x="680" y="177" text-anchor="end">75%</text>
-<text class="value" x="744" y="177" text-anchor="end">85%</text>
-<rect x="0" y="159.5" width="760" height="27" fill="transparent"><title>3. Onboarding: 6 of 8 rows strict, 85% weighted</title></rect>
+<rect x="290" y="169" width="314.5" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="169" width="297.5" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="177" text-anchor="end">88%</text>
+<text class="value" x="744" y="177" text-anchor="end">92%</text>
+<rect x="0" y="159.5" width="760" height="27" fill="transparent"><title>3. Onboarding: 7 of 8 rows strict, 92% weighted</title></rect>
 <text x="28" y="204">4. Visibility</text>
 <rect x="290" y="196" width="340" height="8" rx="4" fill="var(--grid)"/>
 <rect x="290" y="196" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
@@ -77,9 +77,9 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <rect x="0" y="267.5" width="760" height="27" fill="transparent"><title>7. Launch: 1 of 4 rows strict, 25% weighted</title></rect>
 <text x="28" y="312">8. Time and focus</text>
 <rect x="290" y="304" width="340" height="8" rx="4" fill="var(--grid)"/>
-<rect x="290" y="304" width="306.0" height="8" rx="4" fill="var(--weighted)"/>
-<rect x="290" y="304" width="283.3" height="8" rx="4" fill="var(--strict)"/>
-<text class="value" x="680" y="312" text-anchor="end">83%</text>
-<text class="value" x="744" y="312" text-anchor="end">90%</text>
-<rect x="0" y="294.5" width="760" height="27" fill="transparent"><title>8. Time and focus: 5 of 6 rows strict, 90% weighted</title></rect>
+<rect x="290" y="304" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="304" width="340.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="312" text-anchor="end">100%</text>
+<text class="value" x="744" y="312" text-anchor="end">100%</text>
+<rect x="0" y="294.5" width="760" height="27" fill="transparent"><title>8. Time and focus: 6 of 6 rows strict, 100% weighted</title></rect>
 </svg>
