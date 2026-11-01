@@ -14,7 +14,7 @@ import time
 import unittest
 import unittest.mock
 
-from helpers import ENGINE, clean_env, delete_tree, git, needs_sh
+from helpers import ENGINE, clean_env, delete_tree, git, needs_sh, not_on_windows
 
 from gitdone import chart, ci, cli, focus, forecast, gate, gitio, history, portfolio, requirements, table as tables, trace
 from gitdone.plan import Plan, PlanError
@@ -191,6 +191,7 @@ class TheTablesHistory(Case):
         self.assertEqual(chart.points(self.plan(), today=TODAY.isoformat())[-1]["scope"], 10)
 
     def test_t42_a_quote_in_the_tables_name(self):
+        not_on_windows(self, "Windows allows no quote in a file's name")
         name = 'my "table".md'
         self.write_plan(status_doc=name)
         (self.repo / name).write_text(table_text(self.rows))
@@ -2354,7 +2355,7 @@ class TheFifthAttack(Case):
     def test_x9_what_is_shown_of_a_subject_has_an_end(self):
         self.write_table()
         self.commit("2026-03-01", "first")
-        self.commit("2026-03-05", "Fix things " * 5000, files={"h.py": "1\n"}, table=False)
+        self.commit("2026-03-05", "Fix things " * 100, files={"h.py": "1\n"}, table=False)
         self.assertEqual(len(self.found()["list"][0]["subject"]), focus.LONGEST_SUBJECT)
 
     def test_x9_and_so_does_what_is_read_of_a_message(self):
