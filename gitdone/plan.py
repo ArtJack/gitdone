@@ -1,5 +1,6 @@
 """The plan file: everything about a project that its status table cannot say about itself."""
 import collections
+import datetime
 import difflib
 import errno
 import json
@@ -23,6 +24,8 @@ EVIDENCE_RULES = (None, "release", "branch", "note")
 SECTION_TYPES = ("group", "workstreams", "table", "list", "products", "rows")
 RULE_KEYS = ("kinds", "default_branch", "repo", "status_doc", "status_out", "evidence_pattern", "rows_total", "groups")
 MAX_NUMBERS = 100000
+MOST_PATTERNS, LONGEST_PATTERN = 500, 200
+MOST_SIGNAL_PROBLEMS = 10
 
 
 class PlanError(Exception):
@@ -43,7 +46,7 @@ def numbers(value, what):
         out = []
         for part in value.split(","):
             low, dash, high = part.strip().partition("-")
-            if not low.isdigit() or (dash and not high.isdigit()) or len(low) > 9 or len(high) > 9:
+            if not low.isdecimal() or (dash and not high.isdecimal()) or len(low) > 9 or len(high) > 9:
                 raise PlanError(f"{what}: {value!r} is not a range like \"1-11,14\"")
             if len(out) + int(high if dash else low) - int(low) > MAX_NUMBERS:
                 raise PlanError(f"{what}: {value[:40]!r} names more than {MAX_NUMBERS} rows")
@@ -60,6 +63,8 @@ def _typed(data, key, expected, default):
 
 
 KIND_KEYS = {"name", "short", "phrase", "weight", "evidence"}
+FOCUS_KEYS = {"paths", "upkeep", "not_upkeep"}
+SIGNAL_KEYS = ("deadline", "start", "requirements", "focus")  # what only `eta`, `focus` and `matrix` read. A mistake here is said, and it stops no commit
 
 
 def _no_duplicates(pairs):
@@ -103,16 +108,27 @@ def _text(data, key, default=None):
     return value
 
 
-def _no_misspelled_rules(data):
+def _a_day(value):
+    try:
+        if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):  # newer Pythons read more shapes than the oldest one here
+            return datetime.date.fromisoformat(value).isoformat()
+    except ValueError:
+        pass
+    return None
+
+
+def _no_misspelled_rules(data, problems):
     """A plan may carry keys of its own for its sections. One no section reads that is nearly a rule's name is a rule being ignored in silence."""
-    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state")}
+    rules = {key.replace("_", ""): key for key in (*RULE_KEYS, "badge", "branch_aliases", "verdict_state", *SIGNAL_KEYS)}
     sections = data.get("sections")
     used = {s["from"] for s in sections if isinstance(s, dict) and isinstance(s.get("from"), str)} if isinstance(sections, list) else set()
     for key in data:
         if key in rules.values() or key in used:
             continue
         close = difflib.get_close_matches(re.sub(r"[-_ ]", "", key.lower()), rules, n=1, cutoff=0.85)
-        if close:
+        if close and rules[close[0]] in SIGNAL_KEYS:
+            problems.append(f"the plan has {key!r}. Did you mean {rules[close[0]]!r}? As written, it is ignored")
+        elif close:
             raise PlanError(f"the plan has {key!r}. Did you mean {rules[close[0]]!r}? As written, that rule is ignored")
 
 
@@ -156,7 +172,8 @@ class Plan:
             raise PlanError(f"the plan {self.path} is not valid JSON: {err}")
         if not isinstance(data, dict) or data.get("status_doc") is None:
             raise PlanError(f"the plan {self.path} names no status_doc")
-        _no_misspelled_rules(data)
+        self.signal_problems = []
+        _no_misspelled_rules(data, self.signal_problems)
         self.data = data
         self.dir = self.path.parent
         self.title = data.get("title", "Status")
@@ -183,6 +200,9 @@ class Plan:
         self.verdict_state = self._path(verdict_state) if verdict_state else None
         if self.verdict_state and _not_a_regular_file(self.verdict_state):
             raise PlanError(f"verdict_state: {verdict_state} is not a regular file")
+        self.deadline = self._signal_day(data, "deadline")
+        self.start = self._signal_day(data, "start")
+        self.requirements = self._signal_files(data)
         self.generated_by = data.get("generated_by", "gitdone render")
         self.regenerate = data.get("regenerate", "gitdone render --write")
         self.noun = data.get("noun", "rows")
@@ -196,15 +216,100 @@ class Plan:
             raise PlanError("kinds: two kinds share a name")
         self.weights = {k.name: k.weight for k in self.kinds}
         self.strict_kind = self.kinds[0]
+        self.credit = {**self.weights, self.strict_kind.name: 1.0}  # how much of a row each kind counts as done: a row at the strict kind leaves nothing, whatever the percent gives it
         self.groups = [self._group(g) for g in _typed(data, "groups", list, [])]
         self.workstreams = _typed(data, "workstreams", list, [])
         for w in self.workstreams:
-            if not isinstance(w, dict) or "id" not in w:
-                raise PlanError(f"workstreams: each one needs an id, got {w!r}")
-        self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
+            if not isinstance(w, dict) or "id" not in w or isinstance(w["id"], (list, dict)):
+                raise PlanError(f"workstreams: each one needs an id, a word or a number, got {w!r}")
+            if isinstance(w["id"], int):
+                w["id"] = str(w["id"])
+        self.order = [str(ws_id) if isinstance(ws_id, int) else ws_id for ws_id in _typed(data, "order", list, [w["id"] for w in self.workstreams])]
+        for ws_id in self.order:
+            if isinstance(ws_id, (list, dict)):
+                raise PlanError(f"order: each one names a workstream, got {ws_id!r}")
+        self._named_workstreams = {}
+        for w in self.workstreams:
+            if isinstance(w["id"], str):
+                self._named_workstreams.setdefault(w["id"], w)
+        try:
+            self.focus = self._signal_focus(data)
+        except Exception as err:  # the gate's rules are read strictly, and this is not one of them
+            self.signal_problems.append(f"focus: could not be read ({err}), so it is ignored")
+            self.focus = {}
+        if len(self.signal_problems) > MOST_SIGNAL_PROBLEMS:
+            more = len(self.signal_problems) - MOST_SIGNAL_PROBLEMS
+            self.signal_problems[MOST_SIGNAL_PROBLEMS:] = [f"and {more} more mistakes in what only `eta`, `focus` and `matrix` read"]
+        if self.deadline and self.start and self.start > self.deadline:
+            self.signal_problems.append(f"start: {self.start} is after the deadline, {self.deadline}, so it is ignored")
+            self.start = None
         self.sections = _typed(data, "sections", list, None) or self._default_sections()
         for section in self.sections:
             self._check_section(section)
+
+    def _signal_day(self, data, key):
+        if key not in data or data[key] is None:
+            return None
+        day = _a_day(data[key])
+        if day is None:
+            self.signal_problems.append(f"{key}: expected a date like 2026-12-01, got {data[key]!r}, so it is ignored")
+        return day
+
+    def _signal_files(self, data):
+        value = data.get("requirements", [])
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            self.signal_problems.append(f"requirements: expected a list of file names, got {value!r}, so it is ignored")
+            return []
+        return list(dict.fromkeys(value))
+
+    def _signal_focus(self, data):
+        """What ties a commit to a row. The hook reads it on every commit, so what is wrong in it is left out and said, and a few bytes cannot ask for much."""
+        raw = data.get("focus", {})
+        if not isinstance(raw, dict):
+            self.signal_problems.append(f"focus: expected an object, got {raw!r}, so it is ignored")
+            return {}
+        out = {}
+        for key in raw:
+            if key not in FOCUS_KEYS:
+                self.signal_problems.append(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}, so it is ignored")
+        left, said = MOST_PATTERNS, False
+
+        def within(patterns):
+            """These are tried on every file of every commit, so a few bytes must not be able to ask for much."""
+            nonlocal left, said
+            kept = [p for p in patterns if len(p) <= LONGEST_PATTERN][:left]
+            left -= len(kept)
+            if len(kept) < len(patterns) and not said:
+                said = True
+                self.signal_problems.append(f"focus: only the first {MOST_PATTERNS} file patterns, of up to {LONGEST_PATTERN} characters each, are read")
+            return kept
+        for key in ("upkeep", "not_upkeep"):
+            value = raw.get(key, [])
+            if isinstance(value, list) and all(isinstance(p, str) for p in value):
+                out[key] = within(value)
+            else:
+                self.signal_problems.append(f"focus: {key}: expected a list of file patterns, got {value!r}, so it is ignored")
+        paths = raw.get("paths", {})
+        if not isinstance(paths, dict):
+            self.signal_problems.append(f"focus: paths: expected rows or workstreams and their file patterns, got {paths!r}, so it is ignored")
+            paths = {}
+        ids = {w["id"] for w in self.workstreams if isinstance(w["id"], str)}
+        out["paths"], named = {}, 0
+        for key, patterns in paths.items():
+            if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+                self.signal_problems.append(f"focus: paths: {key}: expected a list of file patterns, so it is ignored")
+                continue
+            if key not in ids:
+                try:
+                    named += len(numbers(key, f"focus: paths: {key}"))
+                except PlanError as err:
+                    self.signal_problems.append(f"{err}, so it is ignored")
+                    continue
+                if named > MAX_NUMBERS:
+                    self.signal_problems.append(f"focus: paths names more than {MAX_NUMBERS} rows, so the rest is ignored")
+                    break
+            out["paths"][key] = within(patterns)
+        return out
 
     def root(self):
         """The folder this plan may write inside: its repository, or its own folder when it is in none."""
@@ -299,10 +404,10 @@ class Plan:
         return [Group("all", "All", self.title, [d.n for d in table.domains], None)]
 
     def workstream(self, ws_id):
-        for w in self.workstreams:
-            if w.get("id") == ws_id:
-                return w
-        raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
+        found = self._named_workstreams.get(ws_id) if isinstance(ws_id, str) else None
+        if found is None:
+            raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
+        return found
 
     def problems(self, table):
         """Why this plan and this table cannot be rendered together: the shape, then the references."""

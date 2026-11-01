@@ -314,7 +314,7 @@ class Portfolio(ProjectCase):
     def test_the_page(self):
         code, out, err = self.cli("portfolio", str(self.tmp), plan=False)
         self.assertEqual(code, 0, err)
-        self.assertIn("| project | 16 | 4 (25%) | 46% |", out)
+        self.assertIn("| project (all groups) | 16 | 4 (25%) | 46% |", out)
         self.assertIn("S1 Reading lists and renewals", out)
 
     def test_as_data(self):

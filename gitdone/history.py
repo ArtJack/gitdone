@@ -13,17 +13,76 @@ DAYS = {"d": 1, "day": 1, "w": 7, "week": 7, "m": 30, "month": 30}
 UNIT = {"d": "day", "day": "day", "w": "week", "week": "week", "m": "month", "month": "month"}
 
 
-def _commits(top, rel):
-    """(commit, author date, the table's path then), newest first, following a rename. Author dates survive a rebase."""
-    done = gitio.git(top, "log", "--follow", "--format=%x01%H %as", "--name-only", "--", rel)
-    out, path = [], rel
-    for entry in done.out.split("\x01"):
-        lines = [line for line in entry.split("\n") if line.strip()]
-        if lines:
-            sha, date = lines[0].split()
-            path = lines[-1] if len(lines) > 1 else path
-            out.append((sha, date, path))
-    return forward_dates(out)
+def _is_a_day(text):
+    if not DATE.match(text):
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def table_commits(top, rel, first_parent=False, today=None, forward=True, topological=False):
+    """(commit, date, the table's path then), newest first, following a rename and stopping where a copy began: a table copied from another
+    project's has not lived that project's life. `topological` puts no commit after one it came from, whatever the clocks said.
+
+    A date is when the commit was written, by the author's clock, which survives a rebase. A date past today is a wrong clock: the committer's is used instead,
+    and with both wrong the commit has no date of its own, so that it cannot carry every commit after it along. `forward` makes the dates run in history's order, for
+    what asks how the table stood on a day; without it each commit keeps its own, for what asks when the work was done.
+    """
+    if gitio.git(top, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
+        return []
+    args = (["--first-parent", "-m"] if first_parent else []) + (["--topo-order"] if topological else [])
+    done = gitio.git(top, "log", *args, "--follow", "-z", "--name-status", "--format=%x01%H %as %cs", "--", rel, timeout=60)
+    if done.code:
+        raise PlanError(f"git could not read the history of {rel}: {done.err.strip()[:200]}")
+    today = today or datetime.date.today()
+    latest = today.isoformat()
+    tomorrow = (today + datetime.timedelta(days=1)).isoformat()  # the author's clock may simply be east of this one
+    out, tokens, at = [], done.out.split("\0"), 0
+    while at < len(tokens):
+        head = tokens[at].lstrip("\n")
+        at += 1
+        if not head.startswith("\x01"):
+            continue
+        fields = head[1:].split()
+        if at < len(tokens) and tokens[at].lstrip("\n")[:1] in ("A", "M", "D", "T", "R", "C"):
+            status = tokens[at].lstrip("\n")
+            two_names = status[0] in "RC"
+            source = tokens[at + 1] if at + 1 < len(tokens) else rel
+            path = tokens[at + 2 if two_names else at + 1] if at + (2 if two_names else 1) < len(tokens) else rel
+            at += 3 if two_names else 2
+        else:
+            status, source, path = "", rel, out[-1][2] if out else rel
+        date = next((d for d in fields[1:] if _is_a_day(d) and d <= tomorrow), "")
+        out.append((fields[0], min(date, latest) if date else "", path))
+        if status.startswith("C") and gitio.git(top, "cat-file", "-e", f"HEAD:{source}").code == 0:
+            break  # copied from a table that still lives its own life. One moved in two steps has none left, and this one goes on
+    dated = forward_dates(out)
+    known = next((entry[1] for entry in reversed(dated) if entry[1]), latest)
+    dated = [(sha, date or known, path) for sha, date, path in dated]
+    return dated if forward else [(sha, raw or kept, path) for (sha, raw, path), (_, kept, _) in zip(out, dated)]
+
+
+def table_text_at(top, rel, commits, commit):
+    """The table as a commit held it. A commit that deleted it holds the last state before that, and one from before a rename holds it under its old name."""
+    done = gitio.git(top, "show", f"{commit}:{rel}")
+    if done.code == 0:
+        return done.out
+    paths = {path for _, _, path in commits}
+    for path in sorted(paths):
+        done = gitio.git(top, "show", f"{commit}:{path}")
+        if done.code == 0:
+            return done.out
+    older = False
+    for sha, _, path in commits:
+        if older or sha == commit:
+            older = True
+            done = gitio.git(top, "show", f"{sha}:{path}")
+            if done.code == 0:
+                return done.out
+    return None
 
 
 def forward_dates(commits):
@@ -72,7 +131,7 @@ def delta_data(plan, since=None, today=None):
         raise PlanError(f"{doc.name} is not in a git repository, so it has no history to compare")
     top = top_done.out.strip()
     rel = os.path.relpath(os.path.realpath(doc), os.path.realpath(top)).replace(os.sep, "/")
-    commits = _commits(top, rel)
+    commits = table_commits(top, rel)
     if not commits:
         raise PlanError(f"{doc.name} has no commit yet, so it has no history to compare")
     today = today or datetime.date.today()
@@ -83,15 +142,10 @@ def delta_data(plan, since=None, today=None):
         base = commits[-1][0]
     known = {sha: (date, path) for sha, date, path in commits}
     stamp = known[base][0] if base in known else gitio.git(top, "log", "-1", "--format=%as", base).out.strip()
-    then_text = gitio.git(top, "show", f"{base}:{known[base][1] if base in known else rel}")
-    if then_text.code and base not in known:  # the commit did not touch the table: its path then is its nearest ancestor's
-        for sha, _, path in commits:
-            if gitio.git(top, "merge-base", "--is-ancestor", sha, base).code == 0:
-                then_text = gitio.git(top, "show", f"{base}:{path}")
-                break
-    if then_text.code:
+    then_text = table_text_at(top, rel, commits, base)
+    if then_text is None:
         raise PlanError(f"week: {rel} is not in commit {base[:7]}")
-    then = tables.parse(then_text.out, plan.kinds)
+    then = tables.parse(then_text, plan.kinds)
     now = tables.load_clean(plan)
     moved = _moved(then, now)
     went, stayed = _workstreams(plan, moved)
@@ -110,14 +164,30 @@ def delta_data(plan, since=None, today=None):
                     if then.rows[n].name and now.rows[n].name and then.rows[n].name != now.rows[n].name],
         "removed": [{"row": n, "was": then.rows[n].kind or then.rows[n].status} for n in removed],
         "uncommitted_changes": bool(gitio.git(top, "status", "--porcelain", "--", rel).out.strip()),
+        "focus": _focus_since(plan, since, today),
     }
+
+
+def _focus_since(plan, since, today):
+    """Where the commits went in the same span. A plan's code may live elsewhere, and that must not cost this line its other words."""
+    from . import focus
+    try:
+        if DATE.match(since) or SPAN.match(since):
+            days = (today - datetime.date.fromisoformat(_cutoff(since, today))).days + 1
+            found = focus.data(plan, days=max(days, 1), today=today)
+        else:
+            found = focus.data(plan, revisions=f"{since}..HEAD", today=today)
+    except Exception:
+        return None
+    return {key: found[key] for key in ("commits", "on_plan", "unclear", "upkeep", "off_plan", "newest_only")}
 
 
 def delta(plan, since=None, today=None):
     """One line: the percentages then and now, the rows that moved, the workstreams that did and did not."""
     d = delta_data(plan, since=since, today=today)
     head = f"Since {d['since']}" if d["older_commit_found"] else f"No commit of the table before {d['since']}; since its first commit"
-    line = f"{head} ({d['base']}, {d['base_date']}): " + "; ".join(_group_words(g) for g in d["groups"]) + ". "
+    said = d["base_date"] if d["since"] == d["base"] else f"{d['base']}, {d['base_date']}"
+    line = f"{head} ({said}): " + "; ".join(_group_words(g) for g in d["groups"]) + ". "
     line += _moved_words(d["moved"]) + _workstream_words(d["workstreams_moved"], d["workstreams_not_moved"])
     if d["new_rows"]:
         line += f" {len(d['new_rows'])} rows are new since then."
@@ -127,6 +197,10 @@ def delta(plan, since=None, today=None):
         line += " Removed: " + ", ".join(f"{r['row']} (was {r['was']})" for r in d["removed"]) + "."
     if d["uncommitted_changes"]:
         line += " The table has uncommitted changes, counted here."
+    if d["focus"]:
+        from . import focus
+        words = focus.counts_words(d["focus"])
+        line += f" {words}" if words else ""
     return line
 
 
@@ -149,7 +223,7 @@ def _percentages(plan, group, then, now):
 
 
 def _group_words(g):
-    return (f"{g['label']} strict {g['strict_rows_then']}→{g['strict_rows_now']} of {g['rows']} "
+    return (f"{render.one_line(g['label'])} strict {g['strict_rows_then']}→{g['strict_rows_now']} of {g['rows']} "
             f"({render.pct(g['strict_then'])}→{render.pct(g['strict_now'])}), "
             f"weighted {render.pct(g['weighted_then'])}→{render.pct(g['weighted_now'])}")
 
@@ -183,9 +257,9 @@ def _workstreams(plan, moved):
 def _workstream_words(went, stayed):
     words = []
     if went:
-        words.append("workstreams moved: " + ", ".join(went))
+        words.append("workstreams moved: " + render.one_line(", ".join(went)))
     if stayed:
-        words.append("not moved: " + ", ".join(stayed))
+        words.append("not moved: " + render.one_line(", ".join(stayed)))
     if not words:
         return ""
     return " " + words[0][0].upper() + "; ".join(words)[1:] + "."

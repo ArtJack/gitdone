@@ -28,7 +28,7 @@ project is further from done than anyone was saying, and shows it early.
 1. **Every session starts with the view.** One line: strict and weighted percent, the next workstream, what blocks it. That
    takes thirty seconds, and it answers the drift question before work starts.
 2. **Work is one of three kinds:** the plan's next workstream, the owner's pick (something named instead, in their words), or
-   work outside the scope. Nothing is forbidden; everything is visible.
+   work outside the scope. Nothing is forbidden; everything is visible. `focus` shows which commits were which.
 3. **A step is done when a row's status changed,** with the evidence beside it and the view regenerated.
 4. **Weekly, fifteen minutes:** `week` prints what moved. Write one line: what moved, what did not, and why. A monthly report
    is written from those lines.
@@ -40,8 +40,8 @@ project is further from done than anyone was saying, and shows it early.
 
 - **Strict** is what an outside reviewer would count: rows that are Live.
 - **Weighted** also credits work short of a release, at weights the plan states, so that the number can be argued with.
-- **No percentage is a date.** The tool will draw you a burn-up chart, and it will not draw you a forecast. A line through
-  past progress describes the past.
+- **No percentage is a date.** Only a pace can say when. `eta` draws a line through the table's own history, gives a range, and says in the same
+  sentence that it is a line. It is there for one decision: cut the scope, or move the date. The view never shows it, and the burn-up stays a record.
 
 Strict alone hides real work and punishes a project with a long review queue. Weighted alone lets a project look nearly done
 for a year. The gap between them is itself a signal: work built and not shipped.

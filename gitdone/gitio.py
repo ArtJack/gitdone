@@ -17,10 +17,11 @@ GH_TIMEOUT = 20
 
 
 class Done:
-    def __init__(self, code, out, err):
+    def __init__(self, code, out, err, partial=""):
         self.code = code
         self.out = out
         self.err = err
+        self.partial = partial  # what a process out of time had said by then
 
 
 # A plan names the repository, and a plan can come from a clone. A bare repository committed inside a project brings its own
@@ -43,16 +44,47 @@ def _run(args, cwd=None, env=None, timeout=30, stdin_text=None):
                               input=stdin_text, capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
     except FileNotFoundError:
         return Done(127, "", f"{args[0]} is not installed")
-    except subprocess.TimeoutExpired:
-        return Done(124, "", f"{args[0]} did not answer in {timeout}s")
+    except subprocess.TimeoutExpired as err:
+        said = err.stdout or ""  # bytes on most systems, whatever the process was asked for
+        return Done(124, "", f"{args[0]} did not answer in {timeout}s", partial=said.decode("utf-8", "replace") if isinstance(said, bytes) else said)
     except OSError as err:
         return Done(126, "", str(err))
     return Done(done.returncode, done.stdout, done.stderr)
 
 
+MOST_BYTES_OF_HISTORY = 64 * 1024 * 1024  # of a table's old versions, read for a signal: about eight hundred versions of a table of a thousand rows
+
+
 def git(repo, *args, stdin_text=None, timeout=30):
     """git in a named repository, whatever repository the caller happens to be inside."""
     return _run(["git", *SAFE_CONFIG, "-C", str(repo), *args], env=clean_env(), stdin_text=stdin_text, timeout=timeout)
+
+
+def objects(repo, specs):
+    """(name, bytes) of each of these `commit:path` objects, in order, with None for one that is missing. None in place of the list if git cannot say."""
+    if not specs:
+        return []
+    done = git(repo, "cat-file", "--batch-check=%(objectname) %(objectsize)", stdin_text="\n".join(specs) + "\n", timeout=60)
+    lines = done.out.splitlines() if not done.code else []
+    if len(lines) != len(specs):
+        return None
+    fields = [line.split() for line in lines]
+    return [(said[0], int(said[1])) if len(said) == 2 and said[1].isdigit() else None for said in fields]
+
+
+def fitting(repo, specs, most_bytes):
+    """How many of these `commit:path` objects, from the first, fit in a number of bytes. What a history holds is not what its pack weighs, so a stranger's few bytes can be a lot of text.
+    If git cannot say, whoever reads the text next will find out and say so.
+    """
+    total, count, found_all = 0, 0, objects(repo, specs)
+    if found_all is None:
+        return len(specs)
+    for found in found_all:
+        total += found[1] if found else 0
+        if total > most_bytes:
+            break
+        count += 1
+    return count
 
 
 def blobs(repo, specs, failed=None):

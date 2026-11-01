@@ -32,6 +32,21 @@ TIMELINE = [
 ]
 
 
+# (date, subject, file): the work between those dates, so that `focus` has something to read. Some of it names a row, and some of it is drift.
+WORK = [
+    ("2026-02-11", "row 2: availability from the catalogue feed", "kiosk/availability.py", 90),
+    ("2026-02-18", "Rewrite the receipt printer driver", "printer/driver.py", 340),
+    ("2026-02-19", "row 3: import a reading list from a CSV file", "kiosk/lists.py", 120),
+    ("2026-02-21", "Try a new theme engine for the kiosk", "theme/engine.py", 410),
+    ("2026-02-23", "row 7: renew from the receipt's code", "kiosk/renew.py", 75),
+    ("2026-02-24", "docs: how to run a kiosk at a branch", "docs/running.md", 30),
+    ("2026-02-25", "Rewrite the receipt printer driver again", "printer/driver.py", 280),
+    ("2026-02-26", "row 10: staff sign in", "kiosk/staff.py", 60),
+    ("2026-02-28", "fix: the scanner drops the last digit", "kiosk/scan.py", 4),
+    ("2026-03-01", "row 9: card sign-in reaches the branches", "kiosk/signin.py", 110),
+]
+
+
 def git(repo, *args, date=None):
     env = {**os.environ, **IDENTITY}
     if date:
@@ -64,18 +79,26 @@ def main(argv=None):
     repo.mkdir(parents=True)
     git(repo, "init", "-q", "-b", "main")
     plan = json.loads((EXAMPLE / "plan.json").read_text(encoding="utf-8"))
-    for key in ("rows_total", "groups", "sections", "products", "workstreams", "order", "decisions", "asks", "candidates", "release", "scale", "noun"):
+    for key in ("rows_total", "groups", "sections", "products", "decisions", "asks", "candidates", "release", "scale", "noun"):
         plan.pop(key, None)
-    plan.update({"title": "Bramble Kiosk", "repo": ".", "default_branch": "main"})
+    plan.update({"title": "Bramble Kiosk", "repo": ".", "default_branch": "main", "deadline": "2026-04-15"})
     (repo / "plan.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     text = (EXAMPLE / "status-table.md").read_text(encoding="utf-8")
     body = "# Bramble Kiosk: status table\n\n" + text[text.index("### 1. "):]
     kinds = {"shas": {}}
     with_later = False
+    work = list(WORK)
     for number, (date, change) in enumerate(TIMELINE, 1):
+        while work and work[0][0] <= date:
+            day, subject, name, size = work.pop(0)
+            (repo / name).parent.mkdir(parents=True, exist_ok=True)
+            with open(repo / name, "a", encoding="utf-8") as handle:
+                handle.write("".join(f"{subject}, {line}\n" for line in range(size)))
+            git(repo, "add", name)
+            git(repo, "commit", "-q", "--no-verify", "-m", subject, date=day)
         (repo / "kiosk.txt").write_text(f"kiosk code, step {number}\n", encoding="utf-8")
         git(repo, "add", "kiosk.txt")
-        git(repo, "commit", "-q", "--no-verify", "-m", f"Kiosk code, step {number}", date=date)
+        git(repo, "commit", "-q", "--no-verify", "-m", f"row {min(change.keys(), key=str)}: kiosk code, step {number}" if change and "scope" not in change else f"Kiosk code, step {number}", date=date)
         sha = git(repo, "rev-parse", "--short", "HEAD")
         for key, status in change.items():
             if key == "scope":

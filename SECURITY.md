@@ -26,14 +26,16 @@ A plan and a table can arrive with a clone or a pull request, so they are treate
 - **A plan cannot make a command overwrite a file outside its project,** directly or through a symbolic link, **or inside git's own folder,** where a file it wrote would run as a
   hook or break the repository. The plan, the table and the view must be real, regular files, so a gate never reads something a commit does not hold, and a device or a
   pipe cannot hang it. A view only replaces a view or a file git holds as it stands, so a plan cannot wipe an ignored `.env` or uncommitted work.
-- **The plan is read strictly,** since it sets the gate's rules: a key given twice and an unknown key in a kind are refused, and the hook and the Action say out loud when
+- **A plan's requirement files are read only inside the project.** A plan can come from a clone, and those words can reach a pull request's comment, so a file outside it, or behind a symbolic link, is not read.
+  The comment names where a requirement is, not what it says. A commit's subject never goes in it.
+- **The plan is read strictly where it sets the gate's rules:** a key given twice and an unknown key in a kind are refused, and the hook and the Action say out loud when
   a change touches the rules.
 - **Row text is never executed,** and a git reference taken from a row must match a strict pattern before it reaches `git`. `git replace` cannot rewrite what a
   commit's history says, and a tag named like a commit id is not that commit.
 - **A stranger's words cannot talk to your terminal or to a workflow.** An escape sequence or a carriage return from a table or a plan is shown, not obeyed, in what the gate prints, in its
-  errors, and in anything else at a terminal. A pipe gets the bytes the table holds. `install-ci` refuses a branch name that could shape the workflow.
+  errors, and in anything else at a terminal. A pipe gets the bytes the table holds. Only `gitdone ci` speaks to a workflow's runner: a plan's words that reach the start of a line anywhere else cannot. `install-ci` refuses a branch name that could shape the workflow.
 - **A few bytes cannot ask for much.** Ranges in a plan and rows counted with no table have limits across the whole file, and the regular expressions the engine reads a stranger's words with
-  run in linear time.
+  run in linear time. A plan's file patterns, a commit's message, the ranges in it, its list of files and what is shown of its subject, and the text of a table's old versions, however little they weigh in the pack, have limits too, and `focus` has about ten seconds: what it could not read by then, it says it did not read.
 
 What is left is yours to know: a plan's `evidence_pattern` is a regular expression, so a hostile one can be slow, and `verdict_state` names a file the
 engine opens to read as JSON. The local gate trusts `.git`: someone who can edit it can make git say other things, which a clone in CI is out of reach of. Running `check`

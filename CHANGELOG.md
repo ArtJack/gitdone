@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+The percent said how much. This says when, and where the time went.
+
+**`eta`: when.** A line through the table's own git history, with a range, and the words say it is a line. Two lines, as the percent has strict and weighted: one on Live rows alone, and one with all work, because one commit can mark seven rows Partial and the
+weighted date jumps. A row added or dropped moves the date, and `add` and `remove` say by how many days, so a feature's cost is on the table when someone decides to take it. When scope keeps growing, the headline says the date assumes it stops, `eta` gives the two rates, and
+if it grows as fast as the work, it says the work never catches up. With too little history it gives no date. `chart --burndown` draws it: what is left on both lines, up when the scope grew, with the dates, the range and the deadline.
+
+**A deadline.** `"deadline"` in the plan. `eta` says how late on each line, what pace each needs, and burns time against work on bars. The view states it, and moving it is said out loud.
+
+**`focus`: where the commits went.** On plan means someone said so: the message names the row, a row cites the commit, it moved the row, a merge is tied to the row, or the plan ties its files to the row. What only looks like a row is unclear, and it is listed with what is off plan, with its lines, because a guess must not close a gap.
+A signal that cannot stop anything. `next` lists the rows to work on now. `install-hook` adds a `post-commit` hook that says one line after a commit that was off plan. The opener, `week` and the Action say the numbers, and the agent rules now say: work on what `next` lists, name the row, and say so before starting work on no row.
+
+**`matrix`: traceability read from git.** `"requirements"` names your spec and your roadmap, and `init --from-checklist` takes a spec of `REQ-12: words` lines and names it for you. A row holds a requirement if it names its id or says the same words; anything weaker is a suggestion, and `link` writes the id where later moves keep it. Each requirement goes to its evidence and tests. Two gaps are named:
+a requirement no row names, which the opener, `check` and the Action say on every run, and a row nobody asked for. A test listed exists; whether it passes is your CI's word.
+
+**Where others work.** The Action's comment says what a pull request does to the scope and the date, and it publishes `burndown.svg`. `portfolio` has a likely date per project. The MCP server has `eta`, `focus`, `next` and `matrix`.
+
+**An independent attack reproduced 42 defects in the first cut of this layer, and two cold reads found what a stranger's first hour taught, and each now has a test.** A long line in a spec could hang the gate; a suggested command could run what a hostile spec put in it. `eta` chose its commits
+by the committer's date, so a rebase moved the date and one old commit hid the rest: it now reads what the history keeps. A future clock, a broken commit, a renamed or copied table, a shallow clone and a tracker beside another all told it something false, and no longer do. A row's number is no longer given out again.
+
+**A third reader, who had seen neither of the first two reports, found 23 more, and five of them mattered most.** A row closed a requirement that said different words, because the comparison dropped numbers and words like add and remove: `Add SMS login` held `Remove SMS login`, and now only the same words do. Any merge that moved the table made everything inside it read as on plan, and a pull request's own run is such a merge, so the Action's line could say the opposite of the branch: a commit is now judged by its own change. A line of comments in a spec, a list of patterns in a plan, the ranges in one commit message and a table's old versions could each hold up a run far longer than their bytes should allow, and each now has a limit. `focus` has about ten seconds, and says when it could not read it all. The first commit is no longer told it is off plan, a lock file in a folder is upkeep, a test on record is a test written since the table began, and a date with groups says it covers them all.
+
+**A fourth reader found 14 more, most of them in the fixes for the third.** A commit that moved its row read as off plan when `repo` sat below or beside the plan, after the table was renamed, and past the limit on how much of the table's history is read. The ten seconds were spent before anything was judged, so a slow history read as no commits at all: it now answers for the newest part, says so, and does not call the rest off plan. A table born on a branch that was merged lost that branch's tests. `Title | ID | Priority` gave a requirement the words `High`, and a cell that mentioned an id replaced the line that defined it: a table's heading now says where an id and its words are, and a definition outranks a mention. A row named in a long message is read, a commit of more files than the list holds is judged by both ends of the list, `< 10 MB` is not `> 10 MB`, and a number as a workstream's id no longer crashes the gate.
+
+**A fifth and a sixth reader found 36 more,** most in the fixes before them, and a table in a spec took the longest. Each rule lost requirements or invented them, so all those shapes are now one test, and an id in a column that does not say it holds them, a ticket, a severity or a standard, is passed over and said by `matrix`, where neither loss nor invention goes unseen. **A seventh read it as a new user would, on realistic projects:** a note that mentioned a requirement closed it, `REQ-1: send the link` read as off plan though the row held REQ-1, and marking old work Live counted as pace, so a project brought under a tracker got a date from its own bookkeeping. None of those does now. **An eighth checked those rules in ordinary use,** and the first cut of them lost whole specs to a word in a title, which is why a section is now judged by the whole of its heading, a table with a `Requirement` column holds requirements whatever its first column is called, and `matrix` lists every line it passed over with why. A table born on a merged branch no longer counts the work written before it. Punctuation is punctuation in every script, and a mark that combines with a letter or changes what is asked is not. Tests are recognised in many more layouts and by a long list of languages, and data is not a test. PyPI's license field says MIT, and not the whole license.
+
+**A ninth, on the real specs of four projects, said ship.** The form those specs use, `- **FR-1 Intake.** words`, is what the last round added, and no reader had written it.
+
+**What it still gets wrong, knowingly.** A table with an `ID` or `Requirement` column is read as requirements even if it holds test cases. A section is set aside only by its exact English heading, so `## Риски` is not. All-work pace counts Partial and Built marks and rows citing a pull request, after the first day. A set-aside row that reopens counts against the pace. A requirement that wraps onto a second line keeps only its first. A status table and view moved to another folder leave their old commits reading as on plan until they pass out of the window. In a monorepo, a folder that moved starts again where it moved to.
+
+**Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. A `deadline` is the plan's word and the view states it, so setting one takes a render, as any edit to what the view shows does. The burn-up and the view carry no forecast.
+
 ## 0.2.0 (2026-10-31)
 
 The first version meant for other people's machines.

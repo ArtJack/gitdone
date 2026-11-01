@@ -3,12 +3,18 @@
 `shipped` stays the only way a row reaches the strict kind. These two refuse that, and hold every other kind to its rule.
 """
 import datetime
+import os
+import re
 
-from . import evidence, table as tables
+from . import evidence, gitio, history, requirements, table as tables
 from .plan import PlanError
 from .shipped import Refused, fold_note, read_keeping_newlines, save
 
 TABLE_HEAD = ["| # | Name | Status | Note |", "|---|---|---|---|"]
+
+
+MOST_VERSIONS_READ = 1000
+LARGEST_ROW_NUMBER = 100000000  # past this, a commit message could not name it
 
 
 def resolve_kind(plan, words):
@@ -51,6 +57,24 @@ def _with_count(line, domain, count):
     return tables.HEADER.sub(lambda _: f"### {domain.n}. {domain.name} ({count})", line, count=1)
 
 
+def _highest_ever(plan):
+    """The highest row number the table's history has held. A row's number is its identity, in the history and in commit messages, so a removed one is not given out again."""
+    try:
+        top = gitio.git(plan.doc.parent, "rev-parse", "--show-toplevel")
+        if top.code:
+            return 0
+        rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top.out.strip())).replace(os.sep, "/")
+        commits = history.table_commits(top.out.strip(), rel, first_parent=True)
+    except PlanError:
+        return 0
+    highest = 0
+    for text in gitio.blobs(top.out.strip(), [f"{sha}:{path}" for sha, _, path in commits[:MOST_VERSIONS_READ]]):
+        for number in tables.parse((text or "").replace("\r\n", "\n"), plan.kinds).rows:
+            if number < LARGEST_ROW_NUMBER:
+                highest = max(highest, number)
+    return highest
+
+
 def add(plan, name, domain=None, kind=None, note="", new_domain=None):
     """Add one row at the end of a domain. Returns the row's number. It keeps the header's count and the view true."""
     name = _clean(name)
@@ -68,7 +92,7 @@ def add(plan, name, domain=None, kind=None, note="", new_domain=None):
     same = [r.num for r in table.rows.values() if r.name.lower() == name.lower()]
     if same:
         raise Refused(f"row {same[0]} already has that name")
-    number = max(table.rows, default=0) + 1
+    number = max(max(table.rows, default=0), _highest_ever(plan)) + 1
     row_line = f"| {number} | {name} | {chosen.name} | {note} |"
     lines = text.split("\n")
     if new_domain:
@@ -112,6 +136,25 @@ def remove(plan, row_number):
         del lines[row.line]
     save(plan, text, "\n".join(lines), newline)
     return f"row {row_number} ({row.name}) is out of the scope; `week` will say so"
+
+
+def link(plan, row_number, ident):
+    """Put a requirement's id in a row's note, where a later move keeps it. The status does not change, so this works on a row of any kind."""
+    if not re.fullmatch(requirements.ID, ident):
+        raise Refused(f"{ident!r} is not a requirement's id; one looks like REQ-12")
+    text, newline, table = _loaded(plan)
+    row = table.rows.get(row_number)
+    if row is None:
+        raise Refused(f"row {row_number} is not in {plan.doc.name}")
+    if row.prose:
+        raise Refused(f"row {row_number} sits in a prose domain; give that domain a table of rows first")
+    if ident in evidence.requirements_held(row.name, row.note):
+        return f"row {row_number} already names {ident}; nothing changed"
+    note = f"{ident}. {row.note}".strip() if row.note.strip() else ident
+    lines = text.split("\n")
+    lines[row.line] = f"| {row.num} | {row.name} | {row.status} | {note} |"
+    save(plan, text, "\n".join(lines), newline)
+    return f"row {row_number} answers to {ident}"
 
 
 def _branch_words(plan, words, branch, offline):

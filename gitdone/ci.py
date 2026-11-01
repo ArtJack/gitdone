@@ -65,17 +65,22 @@ def touched(plan, base):
     return bool(names & {os.path.realpath(p) for p in plan.tracked}) or any(os.path.basename(n) == POINTER for n in names)
 
 
-def rule_changes(plan, base):
-    """What this change does to the gate's own rules, compared with the base. The plan is a file a pull request can edit."""
+def _plan_at(plan, base):
+    """(the plan as the base has it, where it moved from), or (None, None)."""
     top = gitio.git(plan.path.parent, "rev-parse", "--show-toplevel")
     if top.code or not evidence.SAFE_REF.match(str(base)):
-        return []
+        return None, None
     root = os.path.realpath(top.out.strip())
 
     def show(path):
         done = gitio.git(root, "show", f"{base}:{path}")
         return done.out if done.code == 0 else None
-    old, moved_from = gate.plan_before(root, os.path.realpath(plan.path), show)
+    return gate.plan_before(root, os.path.realpath(plan.path), show)
+
+
+def rule_changes(plan, base):
+    """What this change does to the gate's own rules, compared with the base. The plan is a file a pull request can edit."""
+    old, moved_from = _plan_at(plan, base)
     return gate.rule_changes(plan, old, moved_from)
 
 
@@ -90,11 +95,15 @@ def summary(plan, table, report, base=None, branch=None):
     if base:
         try:
             L += [f"Against `{branch or 'the base'}`: {history.delta(plan, since=base)}", ""]
-        except PlanError:
-            L += [f"The status table is new against `{branch or 'the base'}`.", ""]
+        except PlanError as err:
+            if "could not read" in str(err):
+                L += [f"git could not read the table's history against `{branch or 'the base'}`.", ""]
+            else:
+                L += [f"The status table is new against `{branch or 'the base'}`.", ""]
     if data["next"]:
         needs = f" Needs {data['next']['needs']}." if data["next"]["needs"] else ""
         L += [f"Next: **{data['next']['id']}** {data['next']['name']}.{needs}", ""]
+    L += _when_and_scope(plan, base)
     moved_rules = rule_changes(plan, base) if base else []
     if moved_rules:
         L += ["**⚠ This pull request changes the gate's own rules. Review these lines first:**", ""]
@@ -106,6 +115,43 @@ def summary(plan, table, report, base=None, branch=None):
         L += [f"- {gate.said(f)}" for f in findings]
         L += ["", "</details>", ""]
     return "\n".join(L)
+
+
+def _in_code(words):
+    """Words from a plan, in a comment that people read: a code span holds them, and they cannot become a link, an image or a mention."""
+    return "`" + render.one_line(words).replace("`", "'") + "`"
+
+
+def _when_and_scope(plan, base):
+    """What the change costs, for whoever is deciding whether a feature is worth its days. A favour: whatever goes wrong here, the comment keeps the gate's word."""
+    from . import forecast, requirements
+    out = []
+    try:
+        moved = gate.deadline_moved(plan, _plan_at(plan, base)[0]) if base else None
+        if moved:
+            out.append(f"**Deadline:** {_in_code(moved)}")
+        if base and evidence.SAFE_REF.match(str(base)):
+            changed = forecast.against(plan, base)
+            if changed:
+                said = []
+                if changed["added"]:
+                    said.append("adds rows " + ", ".join(str(n) for n in changed["added"]))
+                if changed["removed"]:
+                    said.append("takes out rows " + ", ".join(str(n) for n in changed["removed"]))
+                out.append("**Scope:** this " + " and ".join(said) + "." + (f" {changed['date_moved']}" if changed["date_moved"] else ""))
+        found = forecast.data(plan)
+        if found["state"] in ("dated", "stalled"):
+            out.append(f"**When:** {forecast.headline(found)}")
+        if found["deadline"]:
+            out.append(f"**{forecast._deadline_words(found)}**")
+        if plan.requirements:
+            without = requirements.coverage(plan, tables.load_clean(plan))["without"]
+            if without:
+                places = ", ".join(_in_code(item.where()) for item in without[:5]) + (f", and {len(without) - 5} more" if len(without) > 5 else "")
+                out.append(f"**Requirements with no row:** {places}. The percent and the date leave them out.")
+    except Exception:
+        return []
+    return ["\n\n".join(out), ""] if out else []
 
 
 def _gh(args, stdin_text=None):
@@ -167,15 +213,38 @@ def publish(repo, branch, files, message):
 
 
 def badge_files(plan, table):
+    from . import forecast
+    points = chart.points(plan)
+    found = forecast.data(plan)
     return {"badge.svg": badge.svg(plan, table), "badge.json": json.dumps(badge.endpoint(plan, table)) + "\n",
-            "burnup.svg": chart.svg(chart.points(plan), plan.title), "burnup.csv": chart.csv_text(chart.points(plan))}
+            "burnup.svg": chart.svg(points, plan.title), "burnup.csv": chart.csv_text(points),
+            "burndown.svg": chart.burndown(points, plan.title, found, forecast.headline(found))}
 
 
 def _append(env_name, text):
     path = os.environ.get(env_name)
     if path:
-        with open(path, "a", encoding="utf-8") as handle:
+        with open(path, "a", encoding="utf-8", errors="backslashreplace") as handle:
             handle.write(text)
+
+
+def _say_focus(plan, base):
+    """A pull request that leaves the table alone gets no comment and is not judged. Where its commits went, and a requirement no row names, still go in the run's log and summary."""
+    from . import focus, requirements
+    said = []
+    try:
+        if evidence.SAFE_REF.match(str(base)):
+            said.append(focus.counts_words(focus.data(plan, revisions=f"{base}..HEAD")))
+        if plan.requirements:
+            without = requirements.coverage(plan, tables.load_clean(plan))["without"]
+            if without:
+                said.append(f"{len(without)} requirements no row names, the first at {render.one_line(without[0].where())}.")
+    except Exception:  # a favour, and the gate's exit code still decides
+        pass
+    for words in said:
+        if words:
+            print(f"gitdone: {words}")
+            _append("GITHUB_STEP_SUMMARY", f"gitdone. {words}\n")
 
 
 def run(plan, strict=False, comment=True, base=None, publish_branch=None, always=False):
@@ -186,6 +255,7 @@ def run(plan, strict=False, comment=True, base=None, publish_branch=None, always
     branch = (pr.get("base") or {}).get("ref")
     if pr and base and not always and not touched(plan, base):
         print("gitdone: this pull request does not touch the tracker, so it is not judged")
+        _say_focus(plan, base)
         _append("GITHUB_OUTPUT", "result=not touched\nexit-code=0\n")
         return gate.OK
     report = gate.report(plan, strict=strict)
@@ -235,5 +305,5 @@ def _publish_step(plan, table, branch):
     else:
         try:
             print(publish(plan.repo, branch, badge_files(plan, table), f"status: {badge.message(plan, table)}"))
-        except PlanError as err:
+        except Exception as err:
             print(f"::warning title=gitdone::could not publish: {_escape_data(err)}")

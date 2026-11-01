@@ -22,6 +22,11 @@ def bar(p, width=20):
     return "█" * n + "░" * (width - n)
 
 
+def one_line(text):
+    """Words from a plan or a commit, for a place that is one line: a newline in them must not start a line of their own."""
+    return " ".join(str(text).split())
+
+
 def pct(p):
     n = round(p * 100)
     if p < 1 and n >= 100:  # nearly done must not read as done, nor something as nothing
@@ -239,6 +244,8 @@ def status_md(plan, table, today=None):
     L.append(head)
     L.append(">")
     L.append(f"> **Scale.** {_scale_words(plan)}")
+    if plan.deadline:
+        L += [">", f"> **Deadline.** {plan.deadline}. Run `gitdone eta` for where the work stands against it."]
     L.append("")
     for section in plan.sections:
         _SECTIONS[section["type"]](L, plan, table, section)
@@ -297,8 +304,9 @@ def splice_counts(text, table_md):
 
 
 def next_workstream(plan, table):
+    """The first with something in it to do. One with no rows is not finished, and it is only next when nothing else is."""
     left = _unfinished(plan, table)
-    return left[0] if left else None
+    return next((w for w in left if workstream_rows(w, table)), left[0] if left else None)
 
 
 def opener_data(plan, table):
@@ -310,7 +318,7 @@ def opener_data(plan, table):
         groups.append({"label": g.label, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
                        "weighted": score(rows, plan.weights)})
     w = next_workstream(plan, table) if plan.order else None
-    following = {"id": w["id"], "name": w.get("name", ""), "state": w.get("state", ""), "needs": w.get("needs", "")} if w else None
+    following = {"id": one_line(w["id"]), "name": one_line(w.get("name", "")), "state": one_line(w.get("state", "")), "needs": one_line(w.get("needs", ""))} if w else None
     if not plan.order:  # with no workstreams, the table's own order is the queue
         row = next((r for d in table.domains for r in d.rows if r.kind != plan.strict_kind.name and not r.prose), None)
         following = {"id": f"row {row.num}", "name": row.name, "state": row.kind or "", "needs": ""} if row else None
@@ -320,7 +328,7 @@ def opener_data(plan, table):
 def opener(plan, table):
     """One line: strict and weighted per group, the next workstream in order, what it needs."""
     data = opener_data(plan, table)
-    parts = [f"{g['label']}: strict {pct(g['strict'])} ({g['strict_rows']}/{g['rows']}), weighted {pct(g['weighted'])}" for g in data["groups"]]
+    parts = [f"{one_line(g['label'])}: strict {pct(g['strict'])} ({g['strict_rows']}/{g['rows']}), weighted {pct(g['weighted'])}" for g in data["groups"]]
     if data["all_workstreams_done"]:
         parts.append(f"every workstream is fully {plan.strict_kind.phrase}")
     elif data["next"]:

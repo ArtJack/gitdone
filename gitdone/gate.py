@@ -16,6 +16,7 @@ from .discover import POINTER
 from .plan import DEFAULT_KINDS, RULE_KEYS, Plan, PlanError, read_file
 
 OK, CONTRADICTION, CANNOT_RUN, MISSING = 0, 1, 2, 3
+MOST_REQUIREMENTS_SAID = 10
 FRESH, STALE, ABSENT_VIEW, NOT_COMPARED = "fresh", "stale", "missing", "not compared"
 Finding = collections.namedtuple("Finding", "text rows next", defaults=(None,))  # next: what to do about it, on its own line
 
@@ -213,7 +214,23 @@ def _workstream_notes(plan, notes):
     named = set(plan.order)
     for w in plan.workstreams:
         if w.get("id") not in named:
-            notes.append(Finding(f"workstream {w.get('id')} is in the plan and not in its order, so the view does not show it", []))
+            notes.append(Finding(render.one_line(f"workstream {w.get('id')} is in the plan and not in its order, so the view does not show it"), []))
+
+
+def _requirement_notes(plan, table, notes):
+    """A scope document that has moved past the table is said, and it stops nothing: it is not a claim anybody made. So nothing here may change the gate's answer."""
+    from . import requirements
+    try:
+        found = requirements.coverage(plan, table)
+    except Exception as err:
+        notes.append(Finding(render.one_line(f"the requirement files could not be read: {err}"), []))
+        return
+    missing = found["without"]
+    for item in missing[:MOST_REQUIREMENTS_SAID]:
+        notes.append(Finding(f"requirement {item.label()[:80]} ({item.where()}): no row names it, so the percent may leave it out", [], requirements.what_to_do(item)))
+    if len(missing) > MOST_REQUIREMENTS_SAID:
+        notes.append(Finding(f"and {len(missing) - MOST_REQUIREMENTS_SAID} more requirements have no row: gitdone matrix", []))
+    notes.extend(Finding(render.one_line(words), []) for words in found["problems"])
 
 
 def _staged_reader(root, plan_path):
@@ -319,6 +336,13 @@ def rule_changes(plan, old, moved_from=None):
     return out
 
 
+def deadline_moved(plan, old):
+    """A deadline is not a rule of the gate, and moving one is still a thing a reviewer should read."""
+    if not isinstance(old, dict) or old.get("deadline") == plan.data.get("deadline"):
+        return None
+    return render.one_line(f"the deadline moved: it was {old.get('deadline') or 'not set'}, now {plan.data.get('deadline') or 'not set'}")
+
+
 def _plan_named_by(root, rel, staged_paths):
     """The plan a `.gitdone.json` at this path names, read as the commit will hold it; None if it is not usable."""
     from_index = gitio.git_here("show", ":" + rel)
@@ -415,7 +439,8 @@ def check_staged(plan_path, strict=False, offline=False, pointer=None):
         return [], OK
     lines, code = check(plan, strict=strict, offline=offline, staged=True)
     old, moved_from = plan_before(root, plan_path, _committed_show, pointer)
-    return lines + [f"NOTE {words}" for words in rule_changes(plan, old, moved_from)], code
+    moved = deadline_moved(plan, old)
+    return lines + [f"NOTE {words}" for words in rule_changes(plan, old, moved_from)] + ([f"NOTE {moved}"] if moved else []), code
 
 
 class Report:
@@ -501,6 +526,9 @@ def report(plan, strict=False, offline=False, staged=False):
     out.tally = _evidence(plan, table, verifier, out.fails, out.missing, out.notes, strict=strict)
     out.head.append("evidence: " + ", ".join(f"{out.tally[k]} {k}" for k in (evidence.VERIFIED, evidence.UNVERIFIED, "missing", evidence.CONTRADICTED)))
     _workstream_notes(plan, out.notes)
+    if plan.requirements:
+        _requirement_notes(plan, table, out.notes)
+    out.notes.extend(Finding(render.one_line(words), []) for words in plan.signal_problems)
     note = verdict.annotate(plan)
     if note:
         out.verdict = note.line

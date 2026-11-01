@@ -4,7 +4,7 @@ JSON. Only `status_doc` is required. `init` writes it as `.gitdone.json` at the 
 completion from [the schema](../schema/plan.schema.json). Paths are relative to the plan file, and `~` is the home directory.
 
 The plan sets the gate's rules, so it is read strictly: a key given twice is refused, and so are an unknown key in a kind and a key nearly named like a rule (`default_brnach`,
-`DEFAULT_BRANCH`). Keys of your own are fine, including one like `repos` when a section reads it. The first kind must have `"evidence": "release"`, and a plan has at least two kinds. The plan, the table and the view are real, regular files,
+`DEFAULT_BRANCH`). Keys of your own are fine, including one like `repos` when a section reads it. What only `eta`, `focus` and `matrix` read (`deadline`, `start`, `requirements`, `focus`) cannot stop a commit: a mistake there is left out and said as a note. The view states a `deadline`, so setting one takes a `gitdone render --write`, as any edit to what the view shows does. The first kind must have `"evidence": "release"`, and a plan has at least two kinds. The plan, the table and the view are real, regular files,
 not symbolic links, and three different files. A plan never writes outside its own repository, or its own folder when it is in none, and never into `.git`. A view replaces a view or a file git holds as it stands: any other file already at
 that path, or one with uncommitted work in it, is left alone, because nothing could bring it back.
 
@@ -21,6 +21,10 @@ that path, or one with uncommitted work in it, is left alone, because nothing co
 | `branch_aliases` | Short names a status cell may use for branches: `{"A": "some-branch"}` |
 | `evidence_pattern` | A regular expression that also counts as naming a release. A named group `ref` is held to the commit rules as a commit id or a tag, never a branch. Any other match is only reported, and `--strict` does not count it |
 | `verdict_state` | A [Verdict](https://github.com/ArtJack/verdict) `state.json`, read and never written |
+| `deadline` | A date, `2026-12-01`. The view states it, `eta` measures against it, and moving it is said out loud. [Details](timeline.md) |
+| `start` | When the work began, for the time bar, if the table is younger than the work; default the table's first commit |
+| `requirements` | Markdown files inside the project that hold what was asked for, read by `matrix` and said by `check`. [Details](timeline.md#gitdone-matrix-traceability) |
+| `focus` | `paths`: row, range or workstream to file patterns, which ties commits to rows. `upkeep`: file patterns added to the default list. `not_upkeep`: file patterns taken out of it. All from the plan's folder, and up to 500 patterns of 200 characters. [Details](timeline.md#gitdone-focus-where-the-work-went) |
 | `generated_by`, `regenerate` | The command words in the view's header |
 | `noun` | The word after a group's total; default `rows` |
 | `scale` | The words of the scale paragraph; default generated from the kinds |

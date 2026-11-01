@@ -47,7 +47,7 @@ from it.
 | 22 | A badge, kept with the view and held to the table, or as a shields.io endpoint | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 23 | `report`: the evidence row by row | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 24 | `portfolio`: every tracked project on one page | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
-| 25 | A GitHub Action: annotations, one comment, a badge branch | Partial | Runs on GitHub: the gate and the badge branch. The comment on a pull request has not run there yet. |
+| 25 | A GitHub Action: annotations, one comment, a badge branch | Live | Runs on GitHub: the gate, the badge branch, and the comment, first on this repository's first pull request. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 26 | This README shows its own badge and chart | Live | Both are there, and the chart's link resolves now that the repository is public. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 
 ### 5. Evidence and agents (10)
@@ -80,3 +80,13 @@ from it.
 | 38 | Version 1.0 on PyPI, after two weeks of its own gate | Not built | |
 | 39 | Listed where people look: awesome lists, a Show HN | Not built | |
 | 40 | A write-up with real numbers | Not built | |
+
+### 8. Time and focus (5)
+
+| # | Capability | Status | Note |
+|---|---|---|---|
+| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Partial | On a branch until the first release is out. |
+| 45 | `focus` and `next`: where the commits went, what comes next, and a hook that says when a commit was off plan | Partial | On a branch until the first release is out. |
+| 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Partial | On a branch until the first release is out. |
+| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Partial | On a branch until the first release is out. |
+| 48 | The agent rules, the skill and the MCP tools say all of this | Partial | On a branch until the first release is out. |

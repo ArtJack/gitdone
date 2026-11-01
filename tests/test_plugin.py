@@ -76,7 +76,7 @@ class Thin(unittest.TestCase):
         _, body = frontmatter(PLUGIN / "skills" / "status" / "SKILL.md")
         table = body[body.index("| `$ARGUMENTS`"):body.index("Rules:")]
         for code in re.findall(r"`(gitdone[^`]*)`", table):
-            self.assertRegex(code, r"^gitdone (opener|shipped|mark|rows|week|check|doctor)\b")
+            self.assertRegex(code, r"^gitdone (opener|shipped|mark|rows|next|eta|focus|matrix|week|check|doctor)\b")
 
     def test_the_shim_is_all_the_plugin_adds_to_the_path(self):
         self.assertEqual([p.name for p in (PLUGIN / "bin").iterdir()], ["gitdone"])

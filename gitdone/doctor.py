@@ -62,6 +62,25 @@ def _gh(plan, table, offline):
     return _item(WARN, "gh", f"{len(named)} pull requests named, and {done}: they stay unverified")
 
 
+def _time_and_scope(plan, table):
+    """Nothing here is broken if it says no: these are what the tracker can tell, not what it needs."""
+    from . import forecast, requirements
+    out = []
+    try:
+        out.append(_item(OK, "date", forecast.headline(forecast.data(plan))))
+    except Exception as err:
+        out.append(_item(WARN, "date", render.one_line(err)))
+    if plan.requirements:
+        try:
+            found = requirements.coverage(plan, table)
+        except Exception as err:
+            return out + [_item(WARN, "scope", render.one_line(err))]
+        count = len(found["items"]) - len(found["without"])
+        words = f"{count} of {len(found['items'])} have a row" + "".join(f"; {p}" for p in found["problems"]) + (f"; {len(found['passed_over'])} line{'' if len(found['passed_over']) == 1 else 's'} passed over, which `matrix` lists" if found["passed_over"] else "")
+        out.append(_item(WARN if found["without"] or found["problems"] else OK, "scope", f"requirements: {words}"))
+    return out
+
+
 def run(plan_path, offline=False):
     """(items, exit code). Exit 0 unless something is plainly broken."""
     python = ".".join(str(v) for v in sys.version_info[:3])
@@ -112,6 +131,7 @@ def run(plan_path, offline=False):
     if findings:
         words += f". {findings[0].text}" + (f"; and {len(findings) - 1} more: `gitdone check`" if len(findings) > 1 else "")
     items.append(_item(state, "evidence", words))
+    items.extend(_time_and_scope(plan, table))
     return items, 1 if any(i["state"] == FAIL for i in items) else 0
 
 

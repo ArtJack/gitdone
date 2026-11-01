@@ -1,7 +1,7 @@
 ---
 name: status
 description: "This project's status, held to git: print where it stands, move one row on evidence, list what is left, or print the weekly delta. Everything runs in the gitdone engine."
-argument-hint: "[shipped <row> <evidence> | mark <row> <kind> [note] | rows | week [since] | check | doctor]"
+argument-hint: "[shipped <row> <evidence> | mark <row> <kind> [note] | rows | next | eta | focus | week [since] | matrix | check | doctor]"
 disable-model-invocation: true
 allowed-tools: Bash(gitdone:*)
 ---
@@ -19,6 +19,10 @@ The command is `gitdone`, which this plugin puts on the Bash tool's PATH. If the
 | `mark <row> <kind> <words...>` | `gitdone mark <row> '<kind>' '<words...>'` (each in single quotes, exactly as given) |
 | `rows` | `gitdone rows --open` |
 | `week` or `week <since>` | `gitdone week` or `gitdone week '<since>'` |
+| `next` | `gitdone next` |
+| `eta` | `gitdone eta` |
+| `focus` | `gitdone focus` |
+| `matrix` | `gitdone matrix --offline` |
 | `check` | `gitdone check` |
 | `doctor` | `gitdone doctor` |
 | anything else | run nothing; say the forms above |

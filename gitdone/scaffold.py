@@ -19,7 +19,7 @@ TABLE_NAME = "status-table.md"
 VIEW_NAME = "STATUS.md"
 BADGE_NAME = "status-badge.svg"
 FOOTER = "Tracked with [gitdone](https://github.com/ArtJack/gitdone): every Live row names its evidence, and git holds it to that."
-CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[( |x|X)\]\s+(.+?)\s*$")
+CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s+\[( |x|X)\]\s+(.*\S)\s*$")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)(?:\s+#+)?\s*$")
 FENCE = re.compile(r"^\s*(```+|~~~+)")
 PLACEHOLDERS = ["First capability", "Second capability", "Third capability"]
@@ -27,7 +27,6 @@ TOP = DEFAULT_KINDS[0]["name"]
 LAST = DEFAULT_KINDS[-1]["name"]
 PARTIAL = "Partial"
 CHECKED_NOTE = "*(Partial: checked off; no commit named yet)*"
-NAMED_EVIDENCE = re.compile(r"\s*\(\s*(?:`?[0-9a-f]{7,64}`?|PR\s*#?\s*\d+|pull request\s*#?\s*\d+)\s*\)", re.I)
 WORKFLOW = """name: status
 
 on:
@@ -57,7 +56,10 @@ AGENTS_SNIPPET = f"""{AGENTS_START}
 
 This project tracks completion with [gitdone](https://github.com/ArtJack/gitdone).
 
-- At the start of a session, run `gitdone`. It prints where the project stands and what comes next.
+- At the start of a session, run `gitdone`. It prints where the project stands, what comes next, the likely date and where the
+  recent commits went. `gitdone next` lists the rows to work on now.
+- Work on those rows. Name the row in the commit message (`row 12`), so that the work traces to it. Work on no row is a change of scope:
+  say so before starting it. `gitdone add "<what it is>"` puts it in the plan, and it says what that does to the date.
 - `status-table.md` is the only place a status changes. `STATUS.md` is generated: never edit it by hand.
 - When work is on the default branch, move its row with `gitdone shipped <row> <commit or PR>`. Use
   `gitdone mark <row> <kind>` for anything short of that.
@@ -93,37 +95,75 @@ def sections_from_rows(names):
     return [section]
 
 
+def _requirement_in(line, index, columns, read):
+    from . import requirements
+    found = requirements._item(line, index, "", columns)
+    return found if found and found.ident and index + 1 in read else None
+
+
 def sections_from_checklist(text):
-    """Each heading with items under it is a domain. `[x]` is the strict kind, and `[ ]` the last kind."""
-    sections, current, heading, fence = [], None, "Scope", None
-    for line in text.splitlines():
-        opening = FENCE.match(line)
-        if opening and fence is None:
-            fence = opening.group(1)[0]
-            continue
-        if fence is not None:
-            if opening and opening.group(1)[0] == fence:
-                fence = None
-            continue
-        head = HEADING.match(line)
-        if head:
-            heading, current = _clean(head.group(1)), None
-            continue
-        item = CHECK_ITEM.match(line)
-        if not item:
-            continue
+    """Each heading with items under it is a domain. A heading with an id is a row, since a spec can keep its requirements in headings, unless what stands under it is a plain
+    checklist. `[x]` is the strict kind, and `[ ]` the last kind.
+    """
+    from . import requirements
+    sections, current, heading, waiting, seen = [], None, "Scope", None, {}
+    read = {item.line for item in requirements.parse(text, "")}  # what `matrix` will read of this file, so that the two agree
+    asides = {item.line for item in requirements.passed_over_in(text, "")}
+
+    def section():
+        nonlocal current
         if current is None:
             current = next((s for s in sections if s.name == heading), None)
             if current is None:
                 current = Section(heading)
                 sections.append(current)
+        return current
+
+    def from_the_spec(found):  # the id goes in the note, so that the matrix can tie the row back to what asked for it
+        row = (_clean(found.words) or found.ident, LAST, found.ident)
+        held = seen.get(found.ident)
+        if held is None:
+            section().rows.append(row)
+            seen[found.ident] = (found, current.rows, len(current.rows) - 1)
+        elif requirements.outranks(found, held[0]):  # one id is one row, as it is one requirement to the matrix
+            held[1][held[2]] = row
+            seen[found.ident] = (found, held[1], held[2])
+
+    for index, line, columns in requirements.lines_with_columns(text):
+        if len(line) > requirements.LONGEST_LINE or index + 1 in asides:
+            continue
+        head = HEADING.match(line)
+        item = None if head else CHECK_ITEM.match(line)
+        if item and requirements.is_struck(item.group(2).strip()):
+            continue
+        from_spec = None if item else _requirement_in(line, index, columns, read)
+        if head:
+            if waiting:
+                from_the_spec(waiting[1])
+            waiting = (_clean(head.group(1)), from_spec) if from_spec else None
+            if not from_spec:
+                heading, current = _clean(head.group(1)), None
+            continue
+        if not item and not from_spec:
+            continue
+        if waiting and (from_spec or _requirement_in(line, index, columns, read)):
+            from_the_spec(waiting[1])
+            waiting = None
+        elif waiting:
+            heading, current, waiting = waiting[0], None, None
+        if from_spec:
+            from_the_spec(from_spec)
+            continue
+        section()
         words = _clean(item.group(2))
         if item.group(1) == " ":
             current.rows.append((words, LAST, ""))
             continue
         named = _evidence_words(words)
-        name = NAMED_EVIDENCE.sub("", words).strip() or words
+        name = evidence.NAMED_EVIDENCE.sub("", words).strip() or words
         current.rows.append((name, TOP, named) if named else (words, PARTIAL, CHECKED_NOTE))
+    if waiting:
+        from_the_spec(waiting[1])
     return sections
 
 
@@ -200,7 +240,7 @@ def _json_text(data):
     return text.replace('"@KINDS@"', "[\n" + body + "\n  ]") + "\n"
 
 
-def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAME, badge=None):
+def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAME, badge=None, requirements=None):
     """Write the plan and the table; the caller renders the view. Refuses to overwrite anything."""
     directory = pathlib.Path(directory).resolve()
     if not directory.is_dir():
@@ -221,6 +261,8 @@ def create(directory, title=None, sections=None, table=TABLE_NAME, view=VIEW_NAM
         raise PlanError("these rows cannot make a table: " + "; ".join(problems))
     write_atomically(table_path, text)
     data = plan_data(title, in_git, default_branch(directory) if in_git else None, table, view, badge)
+    if requirements:
+        data["requirements"] = requirements
     write_atomically(plan_path, _json_text(data))
     return plan_path, in_git
 
