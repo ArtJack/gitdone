@@ -27,7 +27,6 @@ TOP = DEFAULT_KINDS[0]["name"]
 LAST = DEFAULT_KINDS[-1]["name"]
 PARTIAL = "Partial"
 CHECKED_NOTE = "*(Partial: checked off; no commit named yet)*"
-NAMED_EVIDENCE = re.compile(r"\s*\(\s*(?:`?[0-9a-f]{7,64}`?|PR\s*#?\s*\d+|pull request\s*#?\s*\d+)\s*\)", re.I)
 WORKFLOW = """name: status
 
 on:
@@ -103,35 +102,57 @@ def _requirement_in(line):
 
 
 def sections_from_checklist(text):
-    """Each heading with items under it is a domain. `[x]` is the strict kind, and `[ ]` the last kind."""
+    """Each heading with items under it is a domain. A heading with an id is a row, since a spec can keep its requirements in headings, unless what stands under it is a plain
+    checklist. `[x]` is the strict kind, and `[ ]` the last kind.
+    """
     from . import requirements
-    sections, current, heading = [], None, "Scope"
-    for _, line in requirements.lines_to_read(text):
-        if len(line) > requirements.LONGEST_LINE:
-            continue
-        item = CHECK_ITEM.match(line)
-        from_spec = None if item else _requirement_in(line)
-        head = None if from_spec else HEADING.match(line)
-        if head:
-            heading, current = _clean(head.group(1)), None
-            continue
-        if not item and not from_spec:
-            continue
+    sections, current, heading, waiting = [], None, "Scope", None
+
+    def section():
+        nonlocal current
         if current is None:
             current = next((s for s in sections if s.name == heading), None)
             if current is None:
                 current = Section(heading)
                 sections.append(current)
-        if from_spec:  # the id goes in the note, so that the matrix can tie the row back to what asked for it
-            current.rows.append((_clean(from_spec.words) or from_spec.ident, LAST, from_spec.ident))
+        return current
+
+    def from_the_spec(found):  # the id goes in the note, so that the matrix can tie the row back to what asked for it
+        section().rows.append((_clean(found.words) or found.ident, LAST, found.ident))
+
+    for _, line in requirements.lines_to_read(text):
+        if len(line) > requirements.LONGEST_LINE:
             continue
+        head = HEADING.match(line)
+        item = None if head else CHECK_ITEM.match(line)
+        from_spec = None if item else _requirement_in(line)
+        if head:
+            if waiting:
+                from_the_spec(waiting[1])
+            waiting = (_clean(head.group(1)), from_spec) if from_spec else None
+            if not from_spec:
+                heading, current = _clean(head.group(1)), None
+            continue
+        if not item and not from_spec:
+            continue
+        if waiting and (from_spec or _requirement_in(line)):
+            from_the_spec(waiting[1])
+            waiting = None
+        elif waiting:
+            heading, current, waiting = waiting[0], None, None
+        if from_spec:
+            from_the_spec(from_spec)
+            continue
+        section()
         words = _clean(item.group(2))
         if item.group(1) == " ":
             current.rows.append((words, LAST, ""))
             continue
         named = _evidence_words(words)
-        name = NAMED_EVIDENCE.sub("", words).strip() or words
+        name = evidence.NAMED_EVIDENCE.sub("", words).strip() or words
         current.rows.append((name, TOP, named) if named else (words, PARTIAL, CHECKED_NOTE))
+    if waiting:
+        from_the_spec(waiting[1])
     return sections
 
 

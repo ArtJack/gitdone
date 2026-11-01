@@ -437,15 +437,15 @@ class Commands(ProjectCase):
         self.moving()
         code, out, err = self.cli("opener")
         self.assertEqual(code, 0, err)
-        self.assertIn("Likely done", out)
+        self.assertIn("likely done", out.lower())
 
     def test_the_opener_as_data_keeps_the_date_apart_from_the_warnings(self):
         self.moving()
         code, out, err = self.cli("opener", "--json")
         self.assertEqual(code, 0, err)
         data = json.loads(out)
-        self.assertTrue(any(line.startswith("Likely done") for line in data["time"]))
-        self.assertFalse(any("Likely done" in line for line in data["warnings"]))
+        self.assertTrue(any("likely done" in line.lower() for line in data["time"]))
+        self.assertFalse(any("likely done" in line.lower() for line in data["warnings"]))
 
     def test_the_view_does_not_change_with_the_day(self):
         """The gate compares the view byte for byte, so nothing that moves with the calendar goes in it."""

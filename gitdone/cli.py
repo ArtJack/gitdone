@@ -557,7 +557,7 @@ def cmd_chart(args):
     if args.json:
         _print_json(items)
     elif args.csv:
-        _write_or_print(args.out, chart.csv_text(items))
+        _write_or_print(args.out, chart.burndown_csv(items) if args.burndown else chart.csv_text(items))
     elif not args.out and sys.stdout.isatty():
         print(chart.csv_text(items), end="")
         print("That is the history in rows. To draw it: gitdone chart --out burnup.svg")

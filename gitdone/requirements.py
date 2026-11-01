@@ -5,7 +5,7 @@ import os
 import re
 import shlex
 
-from . import focus, render
+from . import evidence, focus, render
 from .plan import symlink_in
 
 MOST_ITEMS = 10000
@@ -13,8 +13,9 @@ MOST_FILES = 50
 LONGEST_LINE = 2000  # a requirement is a sentence. A longer line is not one, and nothing below should have to read it
 CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s+\[( |x|X)\]\s+(.*\S)\s*$")
 ID = r"[A-Z][A-Z0-9]{0,19}-\d{1,9}(?:\.\d{1,9})*"
-ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?:\[[ xX]\]\s+)?|\|\s*)?(\*\*|__|`)?"
+ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?:\[[ xX]\]\s+)?)?(\*\*|__|`)?"
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
+HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 ID_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){ID}(?![0-9A-Za-z-])")
@@ -25,6 +26,7 @@ class Item:
     def __init__(self, ident, words, source, line):
         self.ident, self.words, self.source, self.line = ident, words, source, line
         self.near = None
+        self.is_section = False
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -33,26 +35,36 @@ class Item:
         return f"{self.ident} {self.words}".strip() if self.ident else self.words
 
 
-def _clean_words(text, in_a_table):
-    """What follows an id: of a table row only its next cell, with the marks around it taken off."""
-    if in_a_table:
-        cells = [c.strip() for c in re.split(r"(?<!\\)\|", text) if c.strip()]
-        text = cells[0] if cells else ""
+def _clean_words(text):
+    """What follows an id, with the marks around it taken off."""
     return render.one_line(text.replace("\\|", "|")).strip("*_`").strip()
 
 
+def _table_item(line, index, source):
+    """A row of a table: the first cell that starts with an id, in whichever column the table keeps them, with the words after it or else the next cell's."""
+    cells = [c.strip() for c in re.split(r"(?<!\\)\|", line)]
+    for at, cell in enumerate(cells):
+        found = ITEM_ID.match(cell)
+        if found and not found.group(1) and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
+            words = found.group(7) or next((c for c in cells[at + 1:] if c), "")
+            return Item(found.group(3), _clean_words(words), source, index + 1)
+    return None
+
+
 def _item(line, index, source):
+    if line.lstrip().startswith("|"):
+        return _table_item(line, index, source)
     found = ITEM_ID.match(line)
     if found and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
         mark, wrapped, inner, outer = found.group(1) or "", found.group(2) and found.group(5), found.group(4), found.group(6)
-        if mark.startswith(("#", "|")) or "[" in mark:
-            says_so = True  # a heading, a table's cell or a checklist item with an id is an id because of where it stands
+        if mark.startswith("#") or "[" in mark:
+            says_so = True  # a heading or a checklist item with an id is an id because of where it stands
         elif mark:
             says_so = bool(inner or outer or wrapped)  # in a list, `- IEEE-754 doubles everywhere` is a sentence
         else:
-            says_so = wrapped or inner == ":" or outer == ":"  # on a line of its own, only its colon: a sentence can wrap to start with `SOC-2.` or `GPT-4 -`
+            says_so = inner == ":" or outer == ":" or bool(wrapped and (inner or outer))  # on a line of its own, its colon, or its mark with its stop: a sentence can start with `SOC-2.`, `GPT-4 -` or **BUG-12**
         if says_so:
-            return Item(found.group(3), _clean_words(found.group(7), mark.startswith("|")), source, index + 1)
+            return Item(found.group(3), _clean_words(found.group(7)), source, index + 1)
     item = CHECK_ITEM.match(line)
     return Item(None, render.one_line(item.group(2)), source, index + 1) if item else None
 
@@ -66,20 +78,21 @@ def lines_to_read(text, problems=None):
             if closing and closing.group(1)[0] == fence[0] and len(closing.group(1)) >= len(fence) and not line.strip()[len(closing.group(1)):].strip():
                 fence = None
             continue
-        visible, rest = "", line
-        while rest:
+        shown, at = [], 0
+        while at < len(line):
             if in_comment:
-                end = rest.find("-->")
+                end = line.find("-->", at)
                 if end < 0:
-                    rest = ""
-                else:
-                    rest, in_comment = rest[end + 3:], False
+                    break
+                at, in_comment = end + 3, False
             else:
-                begin = rest.find("<!--")
+                begin = line.find("<!--", at)
                 if begin < 0:
-                    visible, rest = visible + rest, ""
-                else:
-                    visible, rest, in_comment, comment_line = visible + rest[:begin], rest[begin + 4:], True, index
+                    shown.append(line[at:])
+                    break
+                shown.append(line[at:begin])
+                at, in_comment, comment_line = begin + 4, True, index
+        visible = "".join(shown)
         opening = FENCE.match(visible)
         if opening:
             fence, fence_line = opening.group(1), index
@@ -94,8 +107,10 @@ def lines_to_read(text, problems=None):
 
 
 def parse(text, source, problems=None):
-    """The requirements in one Markdown file, as a reader of it would see them: an item nested in a list counts, and code indented under one does not."""
-    trouble, out, in_list, too_long = [], [], False, []
+    """The requirements in one Markdown file, as a reader of it would see them: an item nested in a list counts, and code indented under one does not. A heading with an id
+    is a requirement, unless what stands under it is a plain checklist: then it is that list's section.
+    """
+    trouble, out, in_list, too_long, heading = [], [], False, [], None
     for index, line in lines_to_read(text, trouble):
         if len(line) > LONGEST_LINE:
             too_long.append(index + 1)
@@ -104,18 +119,22 @@ def parse(text, source, problems=None):
         marked = bool(LIST_MARK.match(line))
         if marked and not indented:
             in_list = True
-        elif not indented:
+        elif not line[0].isspace():  # a list's words can wrap, and only what starts at the margin ends it
             in_list = False
         if indented and not (marked and in_list):
             continue
         item = _item(line, index, source)
+        if HEADING.match(line):
+            heading = item
+        elif item and heading:
+            heading.is_section, heading = not item.ident, None
         if item:
             out.append(item)
     if problems is not None:
         problems.extend(f"requirements: {source}: {words}" for words in trouble)
         if too_long:
             problems.append(f"requirements: {source}: line {too_long[0]} is over {LONGEST_LINE} characters, so it was not read" + (f", and {len(too_long) - 1} more" if len(too_long) > 1 else ""))
-    return out
+    return [item for item in out if not item.is_section]
 
 
 def read(plan):
@@ -150,8 +169,10 @@ def read(plan):
 
 
 def _said(words):
-    """What two sets of words must share to say the same thing: their words that tell one piece of work from another, in any order, or if they have none, all of them."""
-    return frozenset(focus.words_of(words)) or " ".join(re.findall(r"\w+", words.lower()))
+    """The words themselves, in their order, with capitals and punctuation aside. `Add SMS login` and `Remove SMS login`, or `step 1` and `step 2`, are two requirements, whatever else they share.
+    The commit a checklist item names is what it says of itself, not what it asks for.
+    """
+    return " ".join(re.findall(r"\w+", evidence.NAMED_EVIDENCE.sub("", words).lower()))
 
 
 class _Rows:
@@ -164,7 +185,8 @@ class _Rows:
                 self.by_id.setdefault(ident, []).append(row)
             ours = focus.words_of(row.name)
             self.words[row.num] = ours
-            self.by_words.setdefault(_said(row.name), []).append(row)
+            if _said(row.name):
+                self.by_words.setdefault(_said(row.name), []).append(row)
             for word in ours:
                 self.by_word.setdefault(word, []).append(row)
 
@@ -172,7 +194,7 @@ class _Rows:
         """A row holds a requirement if it names its id, or says the same words. Nothing weaker counts, because a guess must not close a gap."""
         if item.ident and item.ident in self.by_id:
             return list(self.by_id[item.ident])
-        return list(self.by_words.get(_said(item.words), [])) if item.words.strip() else []
+        return list(self.by_words.get(_said(item.words), []))
 
     def looks_like(self, item):
         """The row that shares the most of a requirement's words, for the suggestion only. Two words, or the only one."""
@@ -201,7 +223,7 @@ def coverage(plan, table):
 
 def what_to_do(item):
     """The next step for a requirement with no row. The words come from a file a clone can hold, so what is printed cannot run anything if pasted."""
-    add = f"gitdone add {shlex.quote(item.label()[:60])}"
+    add = f"gitdone add {shlex.quote(item.label())}"  # all of it: a row closes the gap by having its id or its words
     near = getattr(item, "near", None)
     if near is not None and item.ident:
         return f"row {near.num} looks like it: gitdone link {near.num} {item.ident}. If it is not: {add}"

@@ -87,10 +87,15 @@ class Coverage(RequirementCase):
         found = dict((i.ident or i.words, [r.num for r in rows]) for i, rows in self.coverage()["items"])
         self.assertEqual(found["Weekly digest email"], [3])
 
-    def test_words_in_another_order_are_the_same_words(self):
-        (self.repo / "docs" / "spec.md").write_text("- [ ] The email digest, weekly\n")
+    def test_capitals_and_punctuation_do_not_make_other_words(self):
+        (self.repo / "docs" / "spec.md").write_text("- [ ] weekly digest: email!\n")
         self.write_table([("Weekly digest email", "Not built", "")])
         self.assertEqual(self.coverage()["without"], [])
+
+    def test_the_same_words_in_another_order_can_ask_for_something_else(self):
+        (self.repo / "docs" / "spec.md").write_text("- [ ] Export PDF to CSV\n")
+        self.write_table([("Export CSV to PDF", "Not built", "")])
+        self.assertEqual(len(self.coverage()["without"]), 1)
 
     def test_sharing_some_words_is_a_suggestion_and_closes_no_gap(self):
         """A guess that closes a gap is worse than the gap: the percent would claim a requirement nobody tied to anything."""

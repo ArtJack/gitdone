@@ -50,9 +50,28 @@ def _run(args, cwd=None, env=None, timeout=30, stdin_text=None):
     return Done(done.returncode, done.stdout, done.stderr)
 
 
+MOST_BYTES_OF_HISTORY = 64 * 1024 * 1024  # of a table's old versions, read for a signal: about two thousand versions of a table of a thousand rows
+
+
 def git(repo, *args, stdin_text=None, timeout=30):
     """git in a named repository, whatever repository the caller happens to be inside."""
     return _run(["git", *SAFE_CONFIG, "-C", str(repo), *args], env=clean_env(), stdin_text=stdin_text, timeout=timeout)
+
+
+def fitting(repo, specs, most_bytes):
+    """How many of these `commit:path` objects, from the first, fit in a number of bytes. What a history holds is not what its pack weighs, so a stranger's few bytes can be a lot of text."""
+    if not specs:
+        return 0
+    done = git(repo, "cat-file", "--batch-check=%(objectsize)", stdin_text="\n".join(specs) + "\n", timeout=60)
+    if done.code:  # git could not say, and whoever reads the text next will find out and say so
+        return len(specs)
+    total, count = 0, 0
+    for line in done.out.splitlines():
+        total += int(line) if line.isdigit() else 0
+        if total > most_bytes:
+            break
+        count += 1
+    return count
 
 
 def blobs(repo, specs, failed=None):

@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 from helpers import ENGINE, clean_env, delete_tree, git, needs_sh
 
@@ -275,7 +276,7 @@ class TheWords(Case):
     def test_the_burndown_as_csv_is_csv(self):
         self.steady()
         done = self.engine("chart", "--burndown", "--csv")
-        self.assertTrue(done.stdout.startswith("date,scope,strict,weighted"), done.stdout[:80])
+        self.assertTrue(done.stdout.startswith("date,scope,left_all_work,left_strict"), done.stdout[:80])
 
 
 class TheLiveLine(Case):
@@ -1154,6 +1155,514 @@ class WhatReachesALog(Case):
                 done = self.engine("check", "--offline")
                 self.assertEqual(done.returncode, 0, done.stderr)
                 self.assertIn("NOTE", done.stdout)
+
+
+class TheThirdAttack(Case):
+    """What a reader with no history of the first two attacks found: V1 to V23."""
+
+    def spec(self, text, name="spec.md"):
+        (self.repo / name).write_text(text)
+        self.write_plan(requirements=[name])
+        self.engine("render", "--write")
+
+    def named(self, *names):
+        self.rows = {i: (name, "Not built") for i, name in enumerate(names, 1)}
+
+    def set_row(self, num, kind):
+        self.rows[num] = (self.rows[num][0], kind)
+
+    def judged(self, *args, **kwargs):
+        return {c["subject"]: c for c in focus.data(self.plan(), days=60, today=datetime.date(2026, 3, 30), *args, **kwargs)["list"]}
+
+    def merge_commit(self, *args, day="2026-03-10", message=None):
+        env = {"GIT_AUTHOR_DATE": f"{day}T12:00:00", "GIT_COMMITTER_DATE": f"{day}T12:00:00"}
+        git(self.repo, "merge", "-q", "--no-ff", *args, "-m", message or "Merge", env=env)
+
+    # V1: the words a row must say
+    def test_v1_a_number_or_a_verb_makes_it_another_requirement(self):
+        self.named("Onboarding step 1", "Tax report for US", "Support API v2", "Add SMS login")
+        self.write_table()
+        self.spec("".join(f"- [ ] {words}\n" for words in ("Onboarding step 1", "Onboarding step 2", "Tax report for US", "Tax report for EU", "Support API v2", "Support API v3", "Remove SMS login")))
+        found = requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+        self.assertEqual([item.words for item in found["without"]], ["Onboarding step 2", "Tax report for EU", "Support API v3", "Remove SMS login"])
+
+    def test_v1_a_commit_named_on_a_checklist_item_is_not_one_of_its_words(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("- REQ-1: Sign in\n- [x] Export (abc1234)\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+
+    def test_v1_it_is_still_a_suggestion(self):
+        self.named("Add SMS login")
+        self.write_table()
+        self.spec("- [ ] Remove SMS login\n")
+        found = requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+        self.assertEqual(found["without"][0].near.num, 1)
+
+    def test_a_word_in_another_alphabet_is_a_word(self):
+        self.assertEqual(focus.words_of("Войти по ссылке"), {"войти", "ссылке"})
+
+    # V2: a merge
+    def tip_and_merge(self):
+        self.named("Magic link login", "Export to PDF")
+        base = self.commit("2026-03-01", "tracker")
+        self.engine("render", "--write")
+        base = self.commit("2026-03-01", "view", table=False)
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.commit("2026-03-05", "Rewrite the printer driver", files={"printer.py": "1\n" * 700})
+        self.commit("2026-03-06", "Try a new theme engine", files={"theme.py": "1\n" * 300})
+        self.set_row(1, "Partial")
+        self.commit("2026-03-06", "status: row 1 started")
+        return base
+
+    def test_v2_a_runs_own_merge_says_nothing_of_what_it_merged(self):
+        base = self.tip_and_merge()
+        at_the_tip = focus.data(self.plan(), revisions=f"{base}..HEAD", today=datetime.date(2026, 3, 30))
+        tip = git(self.repo, "rev-parse", "HEAD")
+        git(self.repo, "checkout", "-q", "--detach", base)
+        self.merge_commit(tip, message=f"Merge {tip} into {base}")
+        at_the_merge = focus.data(self.plan(), revisions=f"{base}..HEAD", today=datetime.date(2026, 3, 30))
+        for key in ("on_plan", "unclear", "upkeep", "off_plan"):
+            self.assertEqual(at_the_merge[key], at_the_tip[key], key)
+        self.assertEqual(at_the_merge["off_plan"], 2)
+
+    def test_v2_a_commit_that_moved_a_row_says_so_on_its_branch_and_inside_a_merge(self):
+        self.named("Magic link login", "Export to PDF")
+        base = self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.set_row(1, "Partial")
+        self.commit("2026-03-05", "Magic links go out", files={"link.py": "1\n"})
+        before = self.judged(revisions=f"{base}..HEAD")["Magic links go out"]
+        tip = git(self.repo, "rev-parse", "HEAD")
+        git(self.repo, "checkout", "-q", "--detach", base)
+        self.merge_commit(tip, message=f"Merge {tip} into {base}")
+        after = self.judged(revisions=f"{base}..HEAD")["Magic links go out"]
+        self.assertEqual((before["class"], after["class"]), (focus.ON, focus.ON))
+        self.assertEqual(after["rows"], [1])
+
+    def test_v2_main_merged_into_a_branch_stays_off_plan_there(self):
+        self.named("Magic link login", "Export to PDF")
+        self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.commit("2026-03-05", "row 1: feature work", files={"f.py": "1\n"})
+        git(self.repo, "checkout", "-q", "main")
+        self.commit("2026-03-06", "Rewrite the printer driver", files={"printer.py": "1\n" * 400})
+        self.set_row(2, "Partial")
+        self.commit("2026-03-07", "status: row 2 started")
+        git(self.repo, "checkout", "-q", "feature")
+        self.merge_commit("main", message="Merge branch 'main' into feature")
+        self.assertEqual(self.judged()["Rewrite the printer driver"]["class"], focus.OFF)
+        git(self.repo, "checkout", "-q", "main")
+        self.assertEqual(self.judged()["Rewrite the printer driver"]["class"], focus.OFF)
+
+    def test_v2_a_table_moved_inside_a_merge_ties_the_move_and_not_all_that_came_with_it(self):
+        self.named("Magic link login", "Export to PDF")
+        self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "develop")
+        self.commit("2026-03-05", "Rewrite the printer driver", files={"printer.py": "1\n" * 700})
+        self.set_row(1, "Partial")
+        self.commit("2026-03-06", "status: row 1 started")
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("develop", message="Merge branch 'develop'")
+        self.assertEqual(self.judged()["Rewrite the printer driver"]["class"], focus.OFF)
+
+    def test_v2_a_merge_someone_named_for_a_row_still_brings_its_branch(self):
+        self.named("Magic link login", "Export to PDF")
+        self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "row-1-links")
+        self.commit("2026-03-05", "Send the link", files={"link.py": "1\n"})
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("row-1-links", message="Merge branch 'row-1-links'")
+        self.assertEqual(self.judged()["Send the link"]["class"], focus.ON)
+
+    def test_v2_a_pull_requests_run_knows_the_branch_its_checkout_has_lost(self):
+        self.named("Magic link login", "Export to PDF")
+        base = self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "row-1-links")
+        self.commit("2026-03-05", "Send the link", files={"link.py": "1\n"})
+        self.assertEqual(self.judged(revisions=f"{base}..HEAD")["Send the link"]["class"], focus.UNCLEAR)
+        tip = git(self.repo, "rev-parse", "HEAD")
+        git(self.repo, "checkout", "-q", "--detach", base)
+        self.merge_commit(tip, message=f"Merge {tip} into {base}")
+        self.assertEqual(self.judged(revisions=f"{base}..HEAD")["Send the link"]["class"], focus.OFF)
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_HEAD_REF": "row-1-links"}):
+            self.assertEqual(self.judged(revisions=f"{base}..HEAD")["Send the link"]["class"], focus.UNCLEAR)
+
+    # V3 to V6: what a stranger's few bytes can ask for
+    def test_v3_a_line_of_comments_costs_what_it_holds(self):
+        started = time.monotonic()
+        self.assertEqual(requirements.parse("- [ ] one\n" + "<!---->" * 600000 + "\n", "spec.md")[0].words, "one")
+        self.assertLess(time.monotonic() - started, 1.5)
+
+    def test_v3_what_a_comment_hides_is_still_hidden(self):
+        lines = list(requirements.lines_to_read("a<!-- b -->c<!-- d\ne\nf -->g\n<!-- open\nnever\n"))
+        self.assertEqual(lines, [(0, "ac"), (2, "g")])
+
+    def test_v4_a_plan_cannot_ask_for_every_pattern_on_every_file(self):
+        self.write_table()
+        self.write_plan(focus={"upkeep": [f"x{i}/*" for i in range(3000)], "not_upkeep": ["y" * 300], "paths": {"1": [f"z{i}/" for i in range(3000)]}})
+        plan = self.plan()
+        self.assertLessEqual(len(plan.focus["upkeep"]) + len(plan.focus["not_upkeep"]) + sum(len(p) for p in plan.focus["paths"].values()), 500)
+        self.assertEqual(plan.focus["not_upkeep"], [])
+        self.assertTrue(any("file patterns" in words for words in plan.signal_problems))
+
+    def test_v5_a_message_cannot_ask_for_every_row_in_every_range(self):
+        known = set(range(1, 3001))
+        message = "rows " + ",".join(f"{a}-{a}" for a in range(100000, 300000))
+        started = time.monotonic()
+        self.assertEqual(focus.named_rows(message[:focus.LONGEST_MESSAGE], known), set())
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_v5_a_message_is_read_as_far_as_anyone_means(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "x" * 50000 + " row 1", files={"a.py": "1\n"})
+        self.assertLessEqual(len(focus.read_commits(self.repo, "-1", "HEAD")[0]["message"]), focus.LONGEST_MESSAGE)
+
+    def test_v5_ranges_and_numbers_are_still_read(self):
+        self.assertEqual(focus.named_rows("rows 2-3, 5", {1, 2, 3, 4, 5}), {2, 3, 5})
+        self.assertEqual(focus.named_rows("row 2", {1, 2}), {2})
+
+    def test_v6_past_its_time_a_signal_stops_and_says_so(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        for day in ("2026-03-05", "2026-03-06"):
+            self.commit(day, f"work on {day}", files={f"{day}.py": "1\n"})
+        with unittest.mock.patch.object(focus, "MOST_SECONDS", -1):
+            found = focus.data(self.plan(), today=datetime.date(2026, 3, 10))
+        self.assertEqual(found["list"], [])
+        self.assertTrue(found["newest_only"])
+        self.assertIn("part of the history", focus.text({**found, "commits": 0}))
+
+    def test_v6_a_commit_of_more_files_than_anyone_means_keeps_its_lines(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "vendor it", files={f"v/{i}.py": "1\n" for i in range(5)})
+        with unittest.mock.patch.object(focus, "MOST_FILES_IN_A_COMMIT", 2):
+            commit = focus.read_commits(self.repo, "-1", "HEAD")[0]
+        self.assertEqual((len(commit["files"]), commit["lines"]), (2, 5))
+
+    def test_v6_a_tables_history_is_read_from_its_newest_within_a_budget(self):
+        self.commit("2026-02-01", "first")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20"), start=1):
+            self.move(i, "Partial", day)
+        size = len(table_text(self.rows))
+        with unittest.mock.patch.object(gitio, "MOST_BYTES_OF_HISTORY", size * 3 + 10):
+            steps, born = forecast.table_steps(self.plan(), datetime.date(2026, 2, 1), TODAY)
+            found = self.data()
+            points = chart.points(self.plan(), today=TODAY.isoformat())
+        self.assertEqual(born, "2026-02-10")
+        self.assertEqual([step[1] for step in steps], ["2026-02-15", "2026-02-20"])
+        self.assertEqual(found["window_days"], (TODAY - datetime.date(2026, 2, 10)).days + 1)
+        self.assertEqual(points[0]["date"], "2026-02-10")
+
+    def test_fitting_counts_from_the_first(self):
+        self.write_table()
+        sha = self.commit("2026-03-01", "first")
+        size = len(table_text(self.rows))
+        specs = [f"{sha}:status-table.md"] * 3
+        self.assertEqual(gitio.fitting(self.repo, specs, size * 2), 2)
+        self.assertEqual(gitio.fitting(self.repo, specs, size - 1), 0)
+        self.assertEqual(gitio.fitting(self.repo, [], 10), 0)
+        self.assertEqual(gitio.fitting(self.repo, [f"{sha}:gone.md"], 10), 1)
+
+    def test_fitting_leaves_it_to_the_reader_when_git_cannot_say(self):
+        self.assertEqual(gitio.fitting(self.tmp, ["a:b", "c:d"], 10), 2)
+
+    def test_a_table_with_more_rows_than_commits_does_not_read_them_for_each(self):
+        self.named("Alpha beta", "Gamma delta")
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "alpha and beta at last", files={"a.py": "1\n"})
+        self.commit("2026-03-06", "nothing like any of them", files={"b.py": "1\n"})
+        found = self.judged()
+        self.assertEqual((found["alpha and beta at last"]["class"], found["alpha and beta at last"]["rows"]), (focus.UNCLEAR, [1]))
+        self.assertEqual(found["nothing like any of them"]["class"], focus.OFF)
+
+    # V7: what a spec holds
+    def test_v7_a_list_whose_words_wrap_keeps_its_nested_items(self):
+        text = "- Reading lists\n  (see the librarian's notes)\n    - REQ-7: Import a list\n    - REQ-8: Export a list\n\nA paragraph.\n\n    - REQ-9: code under a paragraph\n"
+        self.assertEqual([item.ident for item in requirements.parse(text, "spec.md")], ["REQ-7", "REQ-8"])
+
+    def test_v7_an_id_in_any_cell_of_a_table(self):
+        text = "| # | ID | Requirement |\n|---|---|---|\n| 1 | REQ-12 | In a numbered table |\n| 2 | **REQ-13** | Marked |\n| 3 | REQ-14: Its own words | high |\n| 4 | See REQ-1 | no |\n| 5 | UTF-8 | no |\n"
+        self.assertEqual([(item.ident, item.words) for item in requirements.parse(text, "spec.md")],
+                         [("REQ-12", "In a numbered table"), ("REQ-13", "Marked"), ("REQ-14", "Its own words")])
+
+    # V8: where a project keeps its project files
+    def test_v8_a_lock_file_in_a_folder_is_a_lock_file(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Update dependencies", files={"frontend/package-lock.json": "1\n" * 3000, "frontend/package.json": "{}\n"})
+        self.commit("2026-03-06", "Upgrade libraries", files={"backend/go.sum": "1\n" * 800, "backend/go.mod": "module x\n"})
+        self.commit("2026-03-07", "Service notes", files={"backend/docs/notes.txt": "1\n"})
+        found = self.judged()
+        for subject in ("Update dependencies", "Upgrade libraries", "Service notes"):
+            self.assertEqual(found[subject]["class"], focus.UPKEEP, subject)
+
+    def test_v8_a_project_can_still_say_it_is_not(self):
+        self.write_table()
+        self.write_plan(focus={"not_upkeep": ["docs/*"]})
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "The handbook", files={"docs/handbook.txt": "1\n"})
+        self.assertEqual(self.judged()["The handbook"]["class"], focus.OFF)
+
+    # V9: what a date covers
+    def grouped(self):
+        self.write_plan(groups=[{"id": "launch", "label": "Launch", "domains": [1]}, {"id": "later", "label": "Later", "domains": [2]}], deadline="2026-12-01")
+        lines = ["### 1. Launch (3)", "", "| # | Capability | Status | Note |", "|---|---|---|---|", "| 1 | A | Not built | |", "| 2 | B | Not built | |", "| 3 | C | Not built | |", "",
+                 "### 2. Later (1)", "", "| # | Capability | Status | Note |", "|---|---|---|---|", "| 4 | D | Not built | |", ""]
+        table = self.repo / "status-table.md"
+        table.write_text("\n".join(lines))
+        self.commit("2026-01-01", "first", table=False)
+        for num, day in ((1, "2026-02-05"), (2, "2026-02-10"), (3, "2026-02-15")):
+            table.write_text(table.read_text().replace(f"| {num} | {'ABC'[num - 1]} | Not built | |", f"| {num} | {'ABC'[num - 1]} | Partial | started |"))
+            self.commit(day, table=False)
+
+    def test_v9_with_groups_a_date_says_it_is_of_all_of_them(self):
+        self.grouped()
+        found = self.data()
+        self.assertTrue(forecast.headline(found).startswith("All groups: likely done"))
+        self.assertIn(", all groups:", forecast._deadline_words(found))
+        self.assertIn("All groups: likely done", forecast.opener_line(self.plan(), today=TODAY))
+
+    def test_v9_a_group_asked_for_by_name_says_nothing_more(self):
+        self.grouped()
+        found = self.data(group="launch")
+        self.assertTrue(forecast.headline(found).startswith("Likely done"))
+        self.assertNotIn("all groups", forecast._deadline_words(found))
+
+    # V10: the first commit
+    def test_v10_nothing_could_have_been_on_a_plan_that_did_not_exist_yet(self):
+        needs_sh(self)
+        self.write_table()
+        self.engine("render", "--write")
+        self.assertEqual(self.engine("install-hook").returncode, 0)
+        (self.repo / "app.py").write_text("1\n")
+        git(self.repo, "add", "-A")
+        done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-C", str(self.repo), "commit", "-m", "Initial commit"],
+                              env=clean_env(), capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("off plan", done.stdout + done.stderr)
+        (self.repo / "app2.py").write_text("1\n")
+        git(self.repo, "add", "-A")
+        done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-C", str(self.repo), "commit", "-m", "Wire up the printer"],
+                              env=clean_env(), capture_output=True, text=True)
+        self.assertIn("off plan", done.stdout + done.stderr)
+
+    # V11, V12: what the tool prints, it must take
+    def test_v11_a_long_id_can_be_linked(self):
+        self.named("Audit log")
+        self.write_table()
+        self.spec("- REQUIREMENT-3: Audit trail export\n")
+        done = self.engine("link", "1", "REQUIREMENT-3")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("answers to REQUIREMENT-3", done.stdout)
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+
+    def test_v11_a_parents_id_is_not_its_childs(self):
+        self.rows = {1: ("Billing webhook", "Not built")}
+        self.write_table()
+        (self.repo / "status-table.md").write_text(table_text(self.rows).replace("| Not built |  |", "| Not built | AC-7.1 |"))
+        self.spec("- AC-7: Parent criterion\n- AC-7.1: Child criterion\n")
+        done = self.engine("link", "1", "AC-7")
+        self.assertIn("answers to AC-7", done.stdout, done.stderr)
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+
+    def test_v12_the_printed_add_closes_the_gap(self):
+        self.named("Export to PDF")
+        self.write_table()
+        words = "Administrators can export the complete audit trail of every account as a signed PDF, | with a pipe"
+        self.spec(f"- [ ] {words}\n")
+        item = requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"][0]
+        command = requirements.what_to_do(item).split("If it is not: ")[-1].split(", or if a row")[0]
+        parts = shlex.split(command)
+        self.assertEqual(parts[:2], ["gitdone", "add"])
+        self.assertEqual(self.engine("add", *parts[2:]).returncode, 0)
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+
+    # V13: advice that names a row
+    def test_v13_the_hook_names_no_row_it_cannot_know(self):
+        needs_sh(self)
+        self.named("Alpha", "Beta")
+        self.write_table()
+        self.engine("render", "--write")
+        self.commit("2026-03-01", "first", table=False)
+        self.assertEqual(self.engine("install-hook").returncode, 0)
+        (self.repo / "printer.py").write_text("1\n")
+        git(self.repo, "add", "-A")
+        done = subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-C", str(self.repo), "commit", "-m", "Rewrite the receipt printer driver"],
+                              env=clean_env(), capture_output=True, text=True)
+        said = done.stdout + done.stderr
+        self.assertIn("off plan", said)
+        self.assertNotIn("(row 1)", said)
+        self.assertNotIn("row 12", said)
+
+    def test_v13_focus_gives_the_form_and_no_number(self):
+        self.named("Alpha", "Beta")
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Rewrite the receipt printer driver", files={"printer.py": "1\n"})
+        self.assertIn("`row <number>`", focus.text(focus.data(self.plan(), today=datetime.date(2026, 3, 10))))
+
+    # V14: a mistake in a signal
+    def test_v14_nothing_wrong_in_a_signal_changes_an_exit_code(self):
+        self.write_table()
+        for keys in ({"focus": {"paths": {"²": ["src/"]}}}, {"focus": {"paths": {"9" * 5000: ["src/"]}}}, {"focus": []}, {"focus": {"paths": []}}, {"focus": {"upkeep": [1]}}):
+            with self.subTest(str(keys)[:60]):
+                self.write_plan(**keys)
+                self.assertEqual(self.engine("render", "--write").returncode, 0)
+                done = self.engine("check", "--offline")
+                self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+
+    def test_a_workstream_with_an_id_nobody_could_name_is_refused_in_words(self):
+        self.write_table()
+        self.write_plan(workstreams=[{"id": ["a"]}])
+        done = self.engine("check", "--offline")
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("a word or a number", done.stderr + done.stdout)
+
+    def test_a_list_of_mistakes_has_an_end(self):
+        self.write_table()
+        self.write_plan(focus={f"key{i}": 1 for i in range(200)})
+        self.assertEqual(len(self.plan().signal_problems), 11)
+
+    # V16: which folder a plan answers for
+    def plan_below(self, **keys):
+        (self.repo / "docs").mkdir()
+        (self.repo / "docs" / "status-table.md").write_text(table_text(self.rows))
+        self.plan_path.write_text(json.dumps({"status_doc": "docs/status-table.md", "status_out": "docs/STATUS.md", "default_branch": "main", **keys}))
+
+    def test_v16_with_no_repo_a_plan_answers_for_its_own_folder(self):
+        self.plan_below()
+        self.commit("2026-03-01", "tracker", table=False)
+        self.commit("2026-03-05", "Rewrite the printer driver", files={"src/printer.py": "1\n"}, table=False)
+        self.assertEqual(focus.data(self.plan(), today=datetime.date(2026, 3, 10))["off_plan"], 1)
+
+    def test_v16_a_repo_below_the_plan_keeps_the_paths_from_the_plans_folder(self):
+        (self.repo / "backend").mkdir()
+        self.write_table()
+        self.write_plan(repo="backend", focus={"paths": {"1": ["backend/auth/"]}})
+        self.commit("2026-03-01", "tracker", files={"backend/keep": "1\n"})
+        self.commit("2026-03-05", "Sign tokens", files={"backend/auth/x.py": "1\n"}, table=False)
+        self.assertEqual(self.judged()["Sign tokens"]["class"], focus.ON)
+
+    # V17: a plain to-do list with headings
+    def test_v17_a_heading_over_a_plain_list_is_its_domain(self):
+        self.plan_path.unlink()
+        (self.repo / "todo.md").write_text("# Roadmap\n\n## PHASE-1: Setup\n- [ ] Install CI\n- [ ] Add linter\n\n## PHASE-2: Launch\n- [ ] Write docs\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "todo.md").returncode, 0)
+        plan = self.plan()
+        table = tables.load_clean(plan)
+        self.assertEqual([(d.name, [r.name for r in d.rows]) for d in table.domains], [("PHASE-1: Setup", ["Install CI", "Add linter"]), ("PHASE-2: Launch", ["Write docs"])])
+        self.assertEqual(plan.requirements, [])
+
+    def test_v17_a_heading_with_an_id_and_nothing_under_it_is_still_a_row(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("# Spec\n\n## Requirements\n\n### REQ-1: Sign in\n\nSome prose.\n\n### REQ-2: Export\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        plan = self.plan()
+        table = tables.load_clean(plan)
+        self.assertEqual([(d.name, [r.name for r in d.rows]) for d in table.domains], [("Requirements", ["Sign in", "Export"])])
+        self.assertEqual(plan.requirements, ["spec.md"])
+        self.assertEqual(requirements.coverage(plan, table)["without"], [])
+
+    # V18: what a test on record is
+    def test_v18_a_commit_from_before_the_table_named_something_else(self):
+        self.named("Magic link login", "Export to PDF")
+        self.commit("2026-01-05", "Fix row 1 rendering in the spreadsheet grid", files={"tests/test_grid.py": "1\n"}, table=False)
+        self.commit("2026-03-01", "tracker")
+        self.commit("2026-03-05", "row 2: the export", files={"pdf.py": "1\n", "tests/fixtures/sample.json": "{}\n", "tests/test_pdf.py": "1\n"})
+        rows = {r["row"]: r for r in trace.rows_data(self.plan(), offline=True)}
+        self.assertEqual(rows[1]["tests"], [])
+        self.assertEqual(rows[1]["named_by"], [])
+        self.assertEqual(rows[2]["tests"], ["tests/test_pdf.py"])
+
+    def test_v18_the_commit_that_made_the_table_can_name_its_rows(self):
+        self.named("Magic link login")
+        self.commit("2026-03-01", "row 1: with its table", files={"tests/test_link.py": "1\n"})
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/test_link.py"])
+
+    # V19 to V23: what the docs say
+    def test_v19_the_samples_keys_are_the_keys(self):
+        self.steady()
+        found = self.data()
+        text = (pathlib.Path(__file__).resolve().parent.parent / "docs" / "json.md").read_text()
+        sample = json.loads(text.split("## `eta --json`")[1].split("```json")[1].split("```")[0])
+        self.assertEqual(set(sample), set(found))
+
+    def test_v20_prose_that_starts_with_a_marked_id_is_prose(self):
+        text = "**BUG-12** was fixed in the last release.\n\n`API-2` returns JSON.\n\n**AC-6.** Six\n\n`NFR-7`: seven\n"
+        self.assertEqual([item.ident for item in requirements.parse(text, "spec.md")], ["AC-6", "NFR-7"])
+
+    def test_v22_a_row_at_the_strict_kind_leaves_nothing_whatever_it_weighs(self):
+        self.write_plan(kinds=[{"name": "Live", "weight": 0.9, "evidence": "release"}, {"name": "Not built", "weight": 0.0}])
+        self.rows = {n: (f"Thing {n}", "Live") for n in self.rows}
+        self.commit("2026-03-01", "all of it")
+        found = self.data()
+        self.assertEqual((found["left"], found["state"]), (0, "done"))
+
+    def test_v23_a_shallow_clone_gives_no_date_to_move(self):
+        needs_sh(self)
+        self.steady()
+        clone = self.tmp / "clone"
+        subprocess.run(["git", "clone", "-q", "--depth", "2", f"file://{self.repo}", str(clone)], env=clean_env(), check=True, capture_output=True)
+        plan = Plan(clone / ".gitdone.json")
+        self.assertIsNone(forecast.read_pace(plan, today=TODAY))
+        self.assertIsNone(forecast.shift_words(plan, (1.0, 1), today=TODAY))
+
+    # What the same reader saw and thought too small to list
+    def test_a_date_that_does_not_move_is_not_said_to(self):
+        self.steady()
+        pace = forecast.read_pace(self.plan(), today=TODAY)
+        self.assertIsNone(forecast._moved_words((3.0, 3), (3.0, 3), pace, TODAY, "Live"))
+
+    def test_the_burndown_says_the_kind_the_plan_has(self):
+        self.write_plan(kinds=[{"name": "Shipped", "weight": 1.0, "evidence": "release"}, {"name": "Partial", "weight": 0.4, "evidence": "note"}, {"name": "Not built", "weight": 0.0}])
+        self.steady()
+        found = self.data()
+        drawn = chart.burndown(chart.points(self.plan(), today=TODAY.isoformat()), "T", found, forecast.headline(found))
+        self.assertIn("on Shipped rows alone", drawn)
+        self.assertNotIn("Live", drawn)
+
+    def test_a_window_past_the_calendar_is_refused_in_words(self):
+        self.steady()
+        for run in (lambda: forecast.data(self.plan(), days=1000000, today=TODAY), lambda: focus.data(self.plan(), days=1000000, today=TODAY)):
+            with self.assertRaises(PlanError):
+                run()
+
+    def test_a_days_the_server_cannot_read_is_said(self):
+        from gitdone import mcp
+        self.steady()
+        self.assertTrue(mcp._call({"name": "focus", "arguments": {"project": str(self.repo), "days": "7"}}).get("isError"))
+        self.assertFalse(mcp._call({"name": "focus", "arguments": {"project": str(self.repo), "days": 7}}).get("isError"))
+
+    def test_many_workstreams_are_found_without_a_walk_for_each(self):
+        self.write_table()
+        count = 20000
+        self.write_plan(workstreams=[{"id": f"W{i}", "name": "n", "rows": []} for i in range(count)], sections=[])
+        plan = self.plan()
+        started = time.monotonic()
+        for ws_id in plan.order:
+            plan.workstream(ws_id)
+        self.assertLess(time.monotonic() - started, 1.0)
+        with self.assertRaises(PlanError):
+            plan.workstream("nobody")
+
+    def test_a_summary_takes_a_name_no_encoding_can_hold(self):
+        path = self.tmp / "summary.md"
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(path)}):
+            ci._append("GITHUB_STEP_SUMMARY", "name \udce9.md\n")
+        self.assertIn("name", path.read_text())
+
+    def test_whatever_goes_wrong_publishing_the_gate_keeps_its_word(self):
+        self.write_table()
+        self.engine("render", "--write")
+        self.commit("2026-03-01", "first")
+        plan = self.plan()
+        with unittest.mock.patch.object(ci, "badge_files", side_effect=ValueError("broken")), contextlib.redirect_stdout(io.StringIO()) as out:
+            ci._publish_step(plan, tables.load_clean(plan), "badges")
+        self.assertIn("could not publish", out.getvalue())
 
 
 if __name__ == "__main__":

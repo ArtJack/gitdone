@@ -44,7 +44,7 @@ If the scope grows as fast as the work moves, it says the work never catches up.
 ten years, it says that. A shallow clone has lost the history, and it says that too.
 
 **A deadline** is `"deadline": "2026-12-01"` in the plan, and `"start"` if the table is younger than the work. Against it, `eta` says how late on each line and what pace each needs, and burns time against work
-on the bars. The view states the deadline, because that is the plan's word. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action.
+on the bars. The view states the deadline, because that is the plan's word, so after setting or moving it run `gitdone render --write`, as after any edit to what the view shows. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action. With groups, each percent is per group and the date covers them all, so the words say "all groups", and `eta --group` gives one group's.
 
 **In the plan's order:** a workstream is a named set of rows in the plan, and `order` says which comes first:
 
@@ -85,10 +85,10 @@ Each commit on the current branch in the window (`--days`), since the table's fi
 
 **On plan** means someone said so:
 
-- **The message names the row:** `row 12`, `Row: 12`, `rows 12, 13`, `rows 7-9`. Or the subject starts with a workstream that has a digit in its id: `P2: reminder sender`.
+- **The message names the row:** `row 12`, `Row: 12`, `rows 12, 13`, `rows 7-9`. Or the subject starts with a workstream whose id has a letter and a digit: `P2: reminder sender`.
 - **A row cites the commit as evidence,** by its id, or by the pull request in its subject.
-- **The commit moved the row in the table,** or added it.
-- **A merge is tied to the row,** by any of these or by its branch: `Merge branch 'row-12-export'`. It brings along the commits inside it.
+- **The commit moved the row in the table,** or added it, in its own change. It says the same on its branch, inside a merge and after one.
+- **A merge is tied to the row,** by its message, by a row citing it or its pull request, or by its branch: `Merge branch 'row-12-export'`. It brings along the commits inside it. A merge that only moved the table is not tied: any merge does that if something inside it did, and a pull request's run merges by itself.
 - **The plan ties its files to the row:** at least half of the lines it changed, outside upkeep. `"focus": {"paths": {"12": ["src/export/"], "P1": ["src/auth/*.py"]}}`, by row, range or workstream, from the plan's folder.
 
 **Unclear** is what only looks like it, and it is listed so that a person can decide:
@@ -99,11 +99,11 @@ Each commit on the current branch in the window (`--days`), since the table's fi
 
 **Upkeep** is a revert, whatever it reverts; a commit that only touches tests, docs and project files; or one whose subject says `fix:`, `chore:`, `ci:`, `build:`, `style:`, `deps:` or `bump`, with 50 lines or fewer outside those files. `refactor:` is not on the list on purpose. The largest are listed, because tests for off-plan work are off-plan work too.
 
-The files: `tests/`, `test/`, `spec/`, `specs/`, `__tests__/` and the same under any folder, `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`; `docs/`, `doc/`, `*.md`, `*.rst`; `.github/`, `.gitlab-ci.yml`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.pre-commit-config.yaml`; `LICENSE*`; `*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `go.sum`, `go.mod`; `Makefile`, `Dockerfile*`, `docker-compose*.yml`, `pyproject.toml`, `setup.cfg`, `tox.ini`, `requirements*.txt`, `package.json`, `tsconfig*.json`, `Cargo.toml`. `"focus": {"upkeep": ["ops/*"]}` adds to the list, and `"not_upkeep": ["docs/*"]` takes out, for a project whose product is its docs.
+The files, in any folder: `tests/`, `test/`, `spec/`, `specs/`, `__tests__/`, `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`; `docs/`, `doc/`, `*.md`, `*.rst`; `.github/`, `.gitlab-ci.yml`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.pre-commit-config.yaml`; `LICENSE*`; `*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `go.sum`, `go.mod`; `Makefile`, `Dockerfile*`, `docker-compose*.yml`, `pyproject.toml`, `setup.cfg`, `tox.ini`, `requirements*.txt`, `package.json`, `tsconfig*.json`, `Cargo.toml`. `"focus": {"upkeep": ["ops/*"]}` adds to the list, and `"not_upkeep": ["docs/*"]` takes out, for a project whose product is its docs. Both are from the plan's folder.
 
 **Off plan** is everything else. It names no row and matches none. That is not wrong, only unplanned. If it belongs, `gitdone add "<what it is>"` puts it in the scope, and the date moves. If it does not, this is where the time went.
 
-Commits that only touch the tracker do not count. A merge does not count as a commit of its own. In a repository's subfolder, with `"repo": "."`, only commits that touch that folder count: a sibling's work is not off this plan.
+Commits that only touch the tracker do not count. A merge does not count as a commit of its own. In a repository's subfolder, only commits that touch the plan's folder count, or the folder `repo` names: a sibling's work is not off this plan.
 
 **When it speaks.** `install-hook` adds a `post-commit` hook, which says one line after a commit that is off plan, and nothing otherwise. It cannot fail a commit: the commit has already
 happened, and a rebase is left alone. One hook serves every tracker in a repository, and each commit is judged by the tracker its files belong to. `--no-focus` takes it out, and someone's own `post-commit` keeps its place, with a word about what that means. The opener says the numbers at the start of a session, `week` says them for its span, and a pull request
@@ -113,7 +113,7 @@ that leaves the table alone still gets them in its run's log.
 
 ### What it cannot tell
 
-It reads messages and file names, not code. A commit can say `row 12` and do something else, and a reviewer sees that. A commit is a poor unit of time: this counts where commits went, with their lines beside them, not hours. So read the percent loosely, and the list of subjects closely.
+It reads messages and file names, not code. A commit can say `row 12` and do something else, and a reviewer sees that. A commit is a poor unit of time: this counts where commits went, with their lines beside them, not hours. So read the percent loosely, and the list of subjects closely. On a history too large to read in ten seconds, it stops and says it looked at part of it.
 
 ## `gitdone matrix`: traceability
 
@@ -128,9 +128,9 @@ It reads messages and file names, not code. A commit can say `row 12` and do som
 
 A traceability matrix is usually a spreadsheet somebody keeps by hand, which is why it is usually wrong. This one is read from the plan, the table and git, each time. `--out`, `--offline`, `--json`.
 
-**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading or a table's cell (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); or a checklist item. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
+**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading or in a table's cell, whichever column holds the ids (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); or a checklist item. A heading over a plain checklist is that list's section, with an id or without. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
 
-**A row holds a requirement** if its name or note has the id, or if it says the same words, in any order. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
+**A row holds a requirement** if its name or note has the id, or if it says the same words in the same order, capitals and punctuation aside. `Add SMS login` does not hold `Remove SMS login`, and `step 1` does not hold `step 2`. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
 
 ```bash
 gitdone link 7 REQ-7
@@ -141,7 +141,7 @@ gitdone link 7 REQ-7
 **The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
 it is not a claim anybody made. A row no requirement asks for is scope nobody asked for, or a requirement nobody wrote down.
 
-**Tests** on record are the ones that changed in a commit the row cites or a commit that names the row, and that still exist; and any test path in backticks in the row's note, if it exists. With no requirement
+**Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, if it exists. A fixture or a data file in a test's folder is not a test. With no requirement
 files, the matrix is the rows, with their evidence and tests.
 
 ### What it cannot tell

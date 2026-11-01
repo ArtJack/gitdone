@@ -40,7 +40,7 @@ def _numbers(directory):
         likely = forecast.data(plan)["likely"]
     except Exception:  # a tracker outside any repository has no pace, and the rest of its line still stands
         likely = None
-    return {"likely": likely, "title": plan.title, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
+    return {"likely": likely, "all_groups": bool(plan.groups), "title": plan.title, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
             "weighted": tables.score(rows, plan.weights), "next": following["id"] if following else None,
             "next_name": following["name"] if following else None, "gate": report.result(),
             "contradicted": report.tally.get(evidence.CONTRADICTED, 0), "missing": report.tally.get("missing", 0)}
@@ -62,7 +62,7 @@ def markdown(entries, today=None):
         following = f"{e['next']} {e['next_name']}".strip() if e["next"] else ""
         gate_words = {"pass": "pass", "warnings": f"pass, {e['missing']} missing", "fail": f"**fail**, {e['contradicted']} contradicted"}.get(e["gate"], e["gate"])
         L.append(f"| {e['project']} | {e['rows']} | {e['strict_rows']} ({render.pct(e['strict'])}) | {render.pct(e['weighted'])} | "
-                 f"`{render.bar(e['weighted'], 10)}` | {e['likely'] or ''} | {following} | {gate_words} |")
+                 f"`{render.bar(e['weighted'], 10)}` | {e['likely'] or ''}{' (all groups)' if e['likely'] and e['all_groups'] else ''} | {following} | {gate_words} |")
     if not entries:
         L.append(f"|  |  |  |  |  |  |  | no {POINTER} found |")
     return "\n".join(L) + "\n"
