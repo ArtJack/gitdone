@@ -38,7 +38,7 @@ from it.
 | 19 | A README that shows before it explains, with real output a test keeps true | Live | The demo is produced by `docs/demo/record.py`. *(Live 2026-10-31: `f0f2b1f`; was Partial)* |
 | 20 | A stranger gets a gated STATUS.md in five minutes from the README alone | Partial | Two readers with no context reached a gated commit, in 1 min 42 s and then 41 s, and what they found is fixed; not yet tried by a person. |
 | 43 | install-ci: the Action in one command | Live | In the first public commit. *(Live 2026-10-31: `f0f2b1f`; was Partial)* |
-| 50 | The README shows the scale on a worked example, every way to install and the whole instruction, in real output, on GitHub and on PyPI | Partial | Written |
+| 50 | The README shows the scale on a worked example, every way to install and the whole instruction, in real output, on GitHub and on PyPI | Live | Written *(Live 2026-11-01: `0d46779`; was Partial)* |
 
 ### 4. Visibility (6)
 
@@ -91,4 +91,4 @@ from it.
 | 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Live | Read against the real specs of five projects. *(Live 2026-11-01: b87f4f4; was Partial)* |
 | 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Live | Published by the Action on a push to main, for a plan with `"dates": true`. *(Live 2026-11-01: b87f4f4; was Partial)* |
 | 48 | The agent rules, the skill and the MCP tools say all of this | Live | All four MCP tools answered in the last read. *(Live 2026-11-01: b87f4f4; was Partial)* |
-| 49 | The scale: bars where the project opens, a picture with one bar for each part, published with the badge | Partial | Built |
+| 49 | The scale: bars where the project opens, a picture with one bar for each part, published with the badge | Live | Built *(Live 2026-11-01: `f06f663`; was Partial)* |
