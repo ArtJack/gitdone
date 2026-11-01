@@ -47,7 +47,7 @@ from it.
 | 22 | A badge, kept with the view and held to the table, or as a shields.io endpoint | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 23 | `report`: the evidence row by row | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 24 | `portfolio`: every tracked project on one page | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
-| 25 | A GitHub Action: annotations, one comment, a badge branch | Partial | Runs on GitHub: the gate and the badge branch. The comment on a pull request has not run there yet. |
+| 25 | A GitHub Action: annotations, one comment, a badge branch | Live | Runs on GitHub: the gate, the badge branch, and the comment, first on this repository's first pull request. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 26 | This README shows its own badge and chart | Live | Both are there, and the chart's link resolves now that the repository is public. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 
 ### 5. Evidence and agents (10)
