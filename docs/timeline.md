@@ -35,7 +35,7 @@ Each commit on the current branch in the window (`--days`), since the table bega
 
 The files, in any folder: `tests/`, `test/`, `spec/`, `specs/`, `__tests__/`, `e2e/`, `cypress/`, a folder ending in `Tests` or `Test`, `test_*`, `tests.*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`, `*.cy.*`, `*Test.*`, `*Tests.*`; `docs/`, `doc/`, `*.md`, `*.rst`; `.github/`, `.gitlab-ci.yml`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.pre-commit-config.yaml`; `LICENSE*`; `*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `go.sum`, `go.mod`; `Makefile`, `Dockerfile*`, `docker-compose*.yml`, `pyproject.toml`, `setup.cfg`, `tox.ini`, `requirements*.txt`, `package.json`, `tsconfig*.json`, `Cargo.toml`, `pom.xml`, `build.gradle*`, `settings.gradle*`, `gradlew*`, `mvnw*`, `.mvn/`, `gradle/wrapper/`, `Gemfile`, `composer.json`, `.golangci.yml`, `.eslintrc*`, `.prettierrc*`. `"focus": {"upkeep": ["ops/*"]}` adds to the list, and `"not_upkeep": ["docs/*"]` takes out, for a project whose product is its docs. Both are from the plan's folder.
 
-**Off plan** is everything else. It names no row and matches none. That is not wrong, only unplanned. If it belongs, `gitdone add "<what it is>"` puts it in the scope, and the date moves. If it does not, this is where the time went.
+**Off plan** is everything else. It names no row and matches none. That is not wrong, only unplanned. If it belongs, `gitdone add "<what it is>"` puts it in the scope, and the percent moves. If it does not, this is where the time went.
 
 Commits that only touch the tracker do not count. A merge does not count as a commit of its own. In a repository's subfolder, only commits that touch the plan's folder count, or the folder `repo` names: a sibling's work is not off this plan, and a folder that moved starts again where it moved to.
 
@@ -72,7 +72,7 @@ gitdone link 7 REQ-7
 
 `link` puts the id in the row's note, where later moves keep it, and it changes no status, so it works on a row of any kind.
 
-**The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
+**The two gaps** are the point. A requirement no row names may be left out of the percent, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
 it is not a claim anybody made. A row no requirement asks for is scope nobody asked for, or a requirement nobody wrote down.
 
 **Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, from the plan's folder or from `repo`, if it exists. Code in one of those folders is a test; a fixture or a data file in it is not, and neither is a helper. A test in a language the list misses can be named in the note. With no requirement

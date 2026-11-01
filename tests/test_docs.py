@@ -107,6 +107,12 @@ class Links(unittest.TestCase):
                 self.assertIn(anchor, slugs, f"{path.name}: {target}#{anchor}")
 
 
+    def test_the_readmes_own_links_go_somewhere(self):
+        slugs = {re.sub(r"[^\w\- ]", "", h.lower()).replace(" ", "-") for h in re.findall(r"^#+ (.+)$", README, re.M)}
+        for anchor in re.findall(r"\]\(#([^)]+)\)", README):
+            self.assertIn(anchor, slugs)
+
+
 class Samples(unittest.TestCase):
     def test_the_plan_file_document_names_every_key_of_the_schema(self):
         schema = json.loads((ROOT / "schema" / "plan.schema.json").read_text(encoding="utf-8"))

@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.9"
 dependencies = []
 authors = [{ name = "ArtJack" }]
-keywords = ["status", "progress", "burn-up", "evidence", "definition-of-done", "pre-commit", "markdown", "claude-code"]
+keywords = ["status", "progress", "percent-done", "burn-up", "evidence", "definition-of-done", "traceability", "pre-commit", "markdown", "coding-agents", "claude-code"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

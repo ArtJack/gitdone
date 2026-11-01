@@ -1,5 +1,5 @@
 name: "gitdone gate"
-description: "Hold every status claim to git in pull requests: annotations on the table, one comment with what moved, a badge and a burn-up chart."
+description: "Hold every status claim to git in pull requests: annotations on the table, one comment with what moved, a badge, a scale and a burn-up chart."
 author: ArtJack
 branding:
   icon: "check-square"

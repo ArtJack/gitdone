@@ -27,6 +27,10 @@ class Versions(unittest.TestCase):
         server = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
         self.assertIn(f"mcp-name: {server['name']}", (ROOT / "README-pypi.md").read_text(encoding="utf-8"))
 
+    def test_what_a_reader_pins_is_this_version(self):
+        for name in ("README.md", "docs/ci.md"):
+            self.assertIn(f"v{__version__}", (ROOT / name).read_text(encoding="utf-8"), name)
+
     def test_the_version_is_a_release_number(self):
         self.assertRegex(__version__, r"^\d+\.\d+\.\d+$")
 
