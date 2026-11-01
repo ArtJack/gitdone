@@ -552,6 +552,8 @@ def cmd_chart(args):
     from . import chart
     plan = _plan(args)
     items = chart.points(plan, group=_group(plan, args.group))
+    if items.newest_only:
+        print(chart.TOO_MUCH_HISTORY, file=sys.stderr)
     if args.burndown and not args.csv:
         return _burndown(args, plan, items)
     if args.json:

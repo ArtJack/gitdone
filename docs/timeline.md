@@ -44,7 +44,7 @@ If the scope grows as fast as the work moves, it says the work never catches up.
 ten years, it says that. A shallow clone has lost the history, and it says that too.
 
 **A deadline** is `"deadline": "2026-12-01"` in the plan, and `"start"` if the table is younger than the work. Against it, `eta` says how late on each line and what pace each needs, and burns time against work
-on the bars. The view states the deadline, because that is the plan's word, so after setting or moving it run `gitdone render --write`, as after any edit to what the view shows. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action. With groups, each percent is per group and the date covers them all, so the words say "all groups", and `eta --group` gives one group's.
+on the bars. The view states the deadline, because that is the plan's word, so after setting or moving it run `gitdone render --write`, as after any edit to what the view shows. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action. With groups, the opener and the view give each group's percent, and `eta` and `portfolio` count all of them and say "all groups". `eta --group` gives one group's.
 
 **In the plan's order:** a workstream is a named set of rows in the plan, and `order` says which comes first:
 
@@ -113,7 +113,7 @@ that leaves the table alone still gets them in its run's log.
 
 ### What it cannot tell
 
-It reads messages and file names, not code. A commit can say `row 12` and do something else, and a reviewer sees that. A commit is a poor unit of time: this counts where commits went, with their lines beside them, not hours. So read the percent loosely, and the list of subjects closely. On a history too large to read in ten seconds, it stops and says it looked at part of it.
+It reads messages and file names, not code. A commit can say `row 12` and do something else, and a reviewer sees that. A commit is a poor unit of time: this counts where commits went, with their lines beside them, not hours. So read the percent loosely, and the list of subjects closely. It has about ten seconds and reads from the newest. On a history too large for that, or one whose table has more old versions than it reads, it answers for the newest part and says so, and what it did not read is not called off plan.
 
 ## `gitdone matrix`: traceability
 
@@ -128,9 +128,9 @@ It reads messages and file names, not code. A commit can say `row 12` and do som
 
 A traceability matrix is usually a spreadsheet somebody keeps by hand, which is why it is usually wrong. This one is read from the plan, the table and git, each time. `--out`, `--offline`, `--json`.
 
-**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading or in a table's cell, whichever column holds the ids (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); or a checklist item. A heading over a plain checklist is that list's section, with an id or without. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
+**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); a row of a table with the id in its first column, or in one headed `ID`, `Ref`, `Key`, `Code` or `#`; or a checklist item. A table's words follow the id in its cell, or are in the column headed `Title`, `Name`, `Requirement`, `Description` or `Summary`, or else the next cell. An id anywhere else in a table refers to a requirement and does not define one, and what a list or a heading says of an id outranks what a table says of it. A heading over a plain checklist is that list's section, with an id or without. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
 
-**A row holds a requirement** if its name or note has the id, or if it says the same words in the same order, capitals and punctuation aside. `Add SMS login` does not hold `Remove SMS login`, and `step 1` does not hold `step 2`. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
+**A row holds a requirement** if its name or note has the id, or if it says the same words in the same order, capitals and punctuation aside. `Add SMS login` does not hold `Remove SMS login`, and `step 1` does not hold `step 2`. A mark that changes what is asked is not punctuation: `< 10 MB` is not `> 10 MB`, and `C` is not `C++`. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
 
 ```bash
 gitdone link 7 REQ-7
@@ -141,7 +141,7 @@ gitdone link 7 REQ-7
 **The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
 it is not a claim anybody made. A row no requirement asks for is scope nobody asked for, or a requirement nobody wrote down.
 
-**Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, if it exists. A fixture or a data file in a test's folder is not a test. With no requirement
+**Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, from the plan's folder or from `repo`, if it exists. A test is code: a fixture or a data file in a test's folder is not one. With no requirement
 files, the matrix is the rows, with their evidence and tests.
 
 ### What it cannot tell

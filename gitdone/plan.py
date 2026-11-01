@@ -216,12 +216,16 @@ class Plan:
             raise PlanError("kinds: two kinds share a name")
         self.weights = {k.name: k.weight for k in self.kinds}
         self.strict_kind = self.kinds[0]
+        self.credit = {**self.weights, self.strict_kind.name: 1.0}  # how much of a row each kind counts as done: a row at the strict kind leaves nothing, whatever the percent gives it
         self.groups = [self._group(g) for g in _typed(data, "groups", list, [])]
         self.workstreams = _typed(data, "workstreams", list, [])
         for w in self.workstreams:
-            if not isinstance(w, dict) or not isinstance(w.get("id"), (str, int)):
-                raise PlanError(f"workstreams: each one needs an id, a word or a number, got {w!r}")
+            if not isinstance(w, dict) or not isinstance(w.get("id"), str):
+                raise PlanError(f"workstreams: each one needs an id, a word, got {w!r}")
         self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
+        for ws_id in self.order:
+            if not isinstance(ws_id, str):
+                raise PlanError(f"order: each one is a workstream's id, a word, got {ws_id!r}")
         self._named_workstreams = {}
         for w in self.workstreams:
             self._named_workstreams.setdefault(w["id"], w)
@@ -265,14 +269,15 @@ class Plan:
         for key in raw:
             if key not in FOCUS_KEYS:
                 self.signal_problems.append(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}, so it is ignored")
-        left = MOST_PATTERNS
+        left, said = MOST_PATTERNS, False
 
         def within(patterns):
             """These are tried on every file of every commit, so a few bytes must not be able to ask for much."""
-            nonlocal left
-            kept = [p for p in patterns if len(p) <= LONGEST_PATTERN][:max(left, 0)]
+            nonlocal left, said
+            kept = [p for p in patterns if len(p) <= LONGEST_PATTERN][:left]
             left -= len(kept)
-            if len(kept) < len(patterns):
+            if len(kept) < len(patterns) and not said:
+                said = True
                 self.signal_problems.append(f"focus: only the first {MOST_PATTERNS} file patterns, of up to {LONGEST_PATTERN} characters each, are read")
             return kept
         for key in ("upkeep", "not_upkeep"):
@@ -301,8 +306,6 @@ class Plan:
                     self.signal_problems.append(f"focus: paths names more than {MAX_NUMBERS} rows, so the rest is ignored")
                     break
             out["paths"][key] = within(patterns)
-            if left <= 0:
-                break
         return out
 
     def root(self):
@@ -398,7 +401,7 @@ class Plan:
         return [Group("all", "All", self.title, [d.n for d in table.domains], None)]
 
     def workstream(self, ws_id):
-        found = self._named_workstreams.get(ws_id) if isinstance(ws_id, (str, int)) else None
+        found = self._named_workstreams.get(ws_id)
         if found is None:
             raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
         return found

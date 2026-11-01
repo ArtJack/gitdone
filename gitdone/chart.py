@@ -21,6 +21,7 @@ BURNDOWN_RIGHT = 182  # a date with its year and its label
 MOST_SCOPE_MARKS = 6
 SCOPE_MARK_GAP = 28
 HORIZON_FACTOR, HORIZON_DAYS = 3, 60  # how far past today the axis follows a line, so that a far date does not flatten the record
+TOO_MUCH_HISTORY = "Only the newest part of the table's history was read: there is too much of it."
 
 # The palette passes the dataviz six-check validator in both modes; the scope line is neutral ink, not a third hue.
 STYLE = """
@@ -36,15 +37,20 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 
 
 def _tally(plan, text, wanted):
-    """(scope, strict, weighted, whether the table has problems) of a table as it stood."""
+    """(scope, strict, weighted, what is left, whether the table has problems) of a table as it stood."""
     table = tables.parse(text.replace("\r\n", "\n"), plan.kinds)
     rows = [r for d in table.domains if wanted is None or d.n in wanted for r in d.rows]
     top = plan.strict_kind.name
-    return len(rows), sum(1 for r in rows if r.kind == top), sum(plan.weights.get(r.kind, 0.0) for r in rows), bool(table.problems)
+    return len(rows), sum(1 for r in rows if r.kind == top), sum(plan.weights.get(r.kind, 0.0) for r in rows), sum(1 - plan.credit.get(r.kind, 0.0) for r in rows), bool(table.problems)
+
+
+class Points(list):
+    """The chart's points, and whether they reach back as far as the table does."""
+    newest_only = False
 
 
 def points(plan, group=None, today=None):
-    """[{date, scope, strict, weighted}] oldest first, one per day: the state the table ended that day in, in rows."""
+    """[{date, scope, strict, weighted, left}] oldest first, one per day: the state the table ended that day in, in rows."""
     wanted = set(plan.group(group).domains) if group else None
     top_done = gitio.git(plan.doc.parent, "rev-parse", "--show-toplevel")
     if top_done.code:
@@ -52,18 +58,22 @@ def points(plan, group=None, today=None):
     top = top_done.out.strip()
     rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top)).replace(os.sep, "/")
     history = history_module.table_commits(top, rel, first_parent=True, today=_day(today) if today else None)
-    history = history[:gitio.fitting(top, [f"{sha}:{path}" for sha, _, path in history], gitio.MOST_BYTES_OF_HISTORY)]
+    fits = gitio.fitting(top, [f"{sha}:{path}" for sha, _, path in history], gitio.MOST_BYTES_OF_HISTORY)
+    out = Points()
+    out.newest_only = fits < len(history)
+    history = history[:fits]
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in history])
     by_day, scope_before = {}, None
     for (_, date, _), text in zip(reversed(history), reversed(texts)):
         tally = _tally(plan, text, wanted) if text is not None else None
-        if tally is None or (tally[3] and scope_before is not None and tally[0] < scope_before):
+        if tally is None or (tally[4] and scope_before is not None and tally[0] < scope_before):
             continue  # a table that lost rows to a broken line says nothing about them
-        by_day[date], scope_before = tally[:3], tally[0]
+        by_day[date], scope_before = tally[:4], tally[0]
     if not history or gitio.git(top, "status", "--porcelain", "--", rel).out.strip():
         today = today or datetime.date.today().isoformat()
-        by_day[today] = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)[:3]
-    return [{"date": d, "scope": by_day[d][0], "strict": by_day[d][1], "weighted": round(by_day[d][2], 3)} for d in sorted(by_day)]
+        by_day[today] = _tally(plan, plan.text_of(plan.doc, "the status table"), wanted)[:4]
+    out.extend({"date": d, "scope": by_day[d][0], "strict": by_day[d][1], "weighted": round(by_day[d][2], 3), "left": round(by_day[d][3], 3)} for d in sorted(by_day))
+    return out
 
 
 def csv_text(items):
@@ -71,7 +81,7 @@ def csv_text(items):
 
 
 def burndown_csv(items):
-    return "date,scope,left_all_work,left_strict\n" + "".join(f"{p['date']},{p['scope']},{round(p['scope'] - p['weighted'], 3):g},{p['scope'] - p['strict']}\n" for p in items)
+    return "date,scope,left_all_work,left_strict\n" + "".join(f"{p['date']},{p['scope']},{p['left']:g},{p['scope'] - p['strict']}\n" for p in items)
 
 
 def _day(text):
@@ -151,7 +161,7 @@ def svg(items, title):
            f'<title id="t">{escape(title)}: burn-up</title>', f'<desc id="d">{escape(words)}</desc>', f"<style>{STYLE}</style>",
            f'<rect x=".5" y=".5" width="{WIDTH - 1}" height="{HEIGHT - 1}" rx="8" fill="var(--surface)" stroke="var(--edge)"/>',
            f'<text class="title" x="16" y="28">{escape(title)}: burn-up</text>',
-           '<text x="16" y="47">Rows over time, read from the status table\'s git history. No forecast: no percentage is a date.</text>']
+           f'<text x="16" y="47">Rows over time, read from the status table\'s git history. {_too_much(items) or "No forecast: no percentage is a date."}</text>']
     legend_x = 16
     for name, color in (("Scope", "scope"), ("Weighted", "weighted"), ("Strict", "strict")):
         out.append(f'<rect x="{legend_x}" y="61" width="14" height="3" rx="1.5" fill="var(--{color})"/>')
@@ -196,6 +206,10 @@ def svg(items, title):
     return "\n".join(out) + "\n"
 
 
+def _too_much(items):
+    return TOO_MUCH_HISTORY if getattr(items, "newest_only", False) else ""
+
+
 def _toward(start, left, end, edge):
     """Where a straight burn from (start, left) to (end, 0) stands at the chart's right edge, as (day, left)."""
     if end <= edge or end <= start:
@@ -224,7 +238,7 @@ def burndown(items, title, found, words):
     if not items:
         raise PlanError("the table has no history to chart")
     today = _day(found["as_of"])
-    points = [{"date": p["date"], "left": round(p["scope"] - p["weighted"], 3), "left_live": p["scope"] - p["strict"], "scope": p["scope"]} for p in items]
+    points = [{"date": p["date"], "left": p["left"], "left_live": p["scope"] - p["strict"], "scope": p["scope"]} for p in items]
     if _day(points[-1]["date"]) < today:
         points.append({**points[-1], "date": found["as_of"]})
     first = _day(points[0]["date"])
@@ -254,7 +268,9 @@ def burndown(items, title, found, words):
     scope_words = "A step up is scope, marked with its size, or a row going back. Either moves the date." + (" Dotted: what the deadline needs." if needed else "")
     kind = " ".join(str(live.get("kind", "Live")).split())
     subtitle = f"Rows left, in blue on {kind} rows alone, in orange with all work, from the table's git history."
-    if likely:
+    if _too_much(items):
+        subtitle = _too_much(items)
+    elif likely:
         subtitle += f" Dashed: a line through the last {found['window_days']} days, not a promise."
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" height="{HEIGHT}" role="img" aria-labelledby="t d">',
            f'<title id="t">{escape(title)}: burn-down</title>', f'<desc id="d">{escape(words)}</desc>', f"<style>{STYLE}</style>",

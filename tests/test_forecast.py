@@ -491,8 +491,8 @@ class Commands(ProjectCase):
 class Burndown(unittest.TestCase):
     """The drawing, from numbers."""
 
-    items = [{"date": "2026-02-01", "scope": 10, "strict": 0, "weighted": 0.0}, {"date": "2026-02-10", "scope": 12, "strict": 1, "weighted": 2.0},
-             {"date": "2026-02-20", "scope": 12, "strict": 2, "weighted": 4.0}]
+    items = [{"date": "2026-02-01", "scope": 10, "strict": 0, "weighted": 0.0, "left": 10.0}, {"date": "2026-02-10", "scope": 12, "strict": 1, "weighted": 2.0, "left": 10.0},
+             {"date": "2026-02-20", "scope": 12, "strict": 2, "weighted": 4.0, "left": 8.0}]
 
     def found(self, **keys):
         base = {"as_of": "2026-03-01", "left": 8.0, "likely": "2026-04-01", "sure": "2026-04-20", "window_days": 28, "deadline": None}

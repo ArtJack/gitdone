@@ -23,9 +23,9 @@ def _is_a_day(text):
     return True
 
 
-def table_commits(top, rel, first_parent=False, today=None, forward=True):
+def table_commits(top, rel, first_parent=False, today=None, forward=True, topological=False):
     """(commit, date, the table's path then), newest first, following a rename and stopping where a copy began: a table copied from another
-    project's has not lived that project's life.
+    project's has not lived that project's life. `topological` puts no commit after one it came from, whatever the clocks said.
 
     A date is when the commit was written, by the author's clock, which survives a rebase. A date past today is a wrong clock: the committer's is used instead,
     and with both wrong the commit has no date of its own, so that it cannot carry every commit after it along. `forward` makes the dates run in history's order, for
@@ -33,7 +33,7 @@ def table_commits(top, rel, first_parent=False, today=None, forward=True):
     """
     if gitio.git(top, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
         return []
-    args = ["--first-parent", "-m"] if first_parent else []
+    args = (["--first-parent", "-m"] if first_parent else []) + (["--topo-order"] if topological else [])
     done = gitio.git(top, "log", *args, "--follow", "-z", "--name-status", "--format=%x01%H %as %cs", "--", rel, timeout=60)
     if done.code:
         raise PlanError(f"git could not read the history of {rel}: {done.err.strip()[:200]}")
@@ -179,7 +179,7 @@ def _focus_since(plan, since, today):
             found = focus.data(plan, revisions=f"{since}..HEAD", today=today)
     except Exception:
         return None
-    return {key: found[key] for key in ("commits", "on_plan", "unclear", "upkeep", "off_plan")}
+    return {key: found[key] for key in ("commits", "on_plan", "unclear", "upkeep", "off_plan", "newest_only")}
 
 
 def delta(plan, since=None, today=None):
@@ -196,8 +196,10 @@ def delta(plan, since=None, today=None):
         line += " Removed: " + ", ".join(f"{r['row']} (was {r['was']})" for r in d["removed"]) + "."
     if d["uncommitted_changes"]:
         line += " The table has uncommitted changes, counted here."
-    if d["focus"] and d["focus"]["commits"]:
-        line += f" Focus: {d['focus']['on_plan']} of {d['focus']['commits']} commits on plan, {d['focus']['unclear']} unclear, {d['focus']['upkeep']} upkeep, {d['focus']['off_plan']} off plan."
+    if d["focus"]:
+        from . import focus
+        words = focus.counts_words(d["focus"])
+        line += f" {words}" if words else ""
     return line
 
 

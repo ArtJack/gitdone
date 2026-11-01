@@ -42,19 +42,13 @@ def _kinds(plan, text, wanted=None):
     return {r.num: r.kind for d in table.domains if wanted is None or d.n in wanted for r in d.rows}, bool(table.problems)
 
 
-def _credit(plan):
-    """How much of a row each kind counts as done. A row at the strict kind leaves nothing, whatever the percent gives it."""
-    return {**plan.weights, plan.strict_kind.name: 1.0}
-
-
 def _left(plan, rows):
-    credit = _credit(plan)
-    return round(sum(1 - credit.get(r.kind, 0.0) for r in rows), 6)
+    return round(sum(1 - plan.credit.get(r.kind, 0.0) for r in rows), 6)
 
 
 def table_steps(plan, start=None, today=None, wanted=None):
-    """(steps, born). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on. `born` is the
-    table's first day, and None if it has no commit.
+    """(steps, born, read_from). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on. `born` is the
+    table's first day, and None if it has no commit. `read_from` is the first day it could be read from, when there was too much of it to read, and None otherwise.
 
     What is in the window is decided by when each commit was written, so a rebase, which rewrites only when a commit was made, moves nothing.
     """
@@ -62,15 +56,15 @@ def table_steps(plan, start=None, today=None, wanted=None):
     today = today or datetime.date.today()
     commits = list(reversed(history.table_commits(top, rel, first_parent=True, today=today, forward=False)))
     if not commits:
-        return [], None
-    born = commits[0][1]
+        return [], None, None
+    born, read_from = commits[0][1], None
     from_day = start.isoformat() if start is not None else ""
     first = next((i for i, c in enumerate(commits) if c[1] >= from_day), len(commits))
     read = commits[max(first - STATES_BEFORE_THE_WINDOW, 0):]
     fits = gitio.fitting(top, [f"{sha}:{path}" for sha, _, path in reversed(read)], gitio.MOST_BYTES_OF_HISTORY)
-    if fits < len(read):  # more text than a signal should read: the newest of it, and for what reads this the table begins there
+    if fits < len(read):  # more text than a signal should read: the newest of it
         read = read[len(read) - fits:]
-        born = read[0][1] if read else today.isoformat()
+        read_from = read[0][1] if read else today.isoformat()
 
     def stop(words):
         raise PlanError(f"git could not read the table's history: {words.strip()[:200]}")
@@ -85,7 +79,7 @@ def table_steps(plan, start=None, today=None, wanted=None):
         if before is not None and date >= from_day:
             steps.append((sha, date, before, after))
         before = after
-    return steps, born
+    return steps, born, read_from
 
 
 class Pace:
@@ -99,9 +93,10 @@ class Pace:
         self.live = [0.0] * days  # rows reaching the strict kind, less rows leaving it
         self.grew = [0.0] * days
         self.added = self.removed = 0
+        self.newest_only = False
 
     def _take(self, offset, before, after):
-        weights, top = _credit(self.plan), self.plan.strict_kind.name
+        weights, top = self.plan.credit, self.plan.strict_kind.name
         new, gone = after.keys() - before.keys(), before.keys() - after.keys()
         for n in after.keys() & before.keys():
             was, now = before[n], after[n]
@@ -144,11 +139,12 @@ def read_pace(plan, group=None, days=WINDOW, today=None):
     today = today or datetime.date.today()
     wanted = set(plan.group(group).domains) if group else None
     start = today - datetime.timedelta(days=days - 1)
-    steps, born = table_steps(plan, start, today, wanted)
+    steps, born, read_from = table_steps(plan, start, today, wanted)
     if born is None:
         return None
-    start = max(start, datetime.date.fromisoformat(born))
+    start = max(start, datetime.date.fromisoformat(read_from or born))
     pace = Pace(plan, today, (today - start).days + 1)
+    pace.newest_only = read_from is not None
     for _, date, before, after in steps:
         pace._take(max((datetime.date.fromisoformat(date) - start).days, 0), before, after)
     return pace
@@ -250,14 +246,14 @@ def data(plan, group=None, days=WINDOW, today=None):
            "strict": top / len(rows) if rows else 0.0, "weighted": tables.score(rows, plan.weights), "window_days": days, "moving_days": 0,
            "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "only_backwards": False, "last_change": None, "plan_problems": list(plan.signal_problems),
            "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "never_catches_up": False},
-           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": [], "all_groups": bool(plan.groups) and not group}
+           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": [], "all_groups": bool(plan.groups) and not group, "newest_only": False}
     root, rel = _where(plan)
     shallow = _is_shallow(root)
     pace = read_pace(plan, group=group, days=days, today=today)
     series = None
     if pace is not None:
         out.update(window_days=pace.days, moving_days=pace.moving_days(), pace_per_day=round(pace.per_day(), 3), largest_day_share=round(pace.largest_day_share(), 3),
-                   only_backwards=pace.only_backwards(), live=_live_line(plan, rows, pace, today))
+                   only_backwards=pace.only_backwards(), live=_live_line(plan, rows, pace, today), newest_only=pace.newest_only)
         out["scope"].update(added=pace.added, removed=pace.removed, per_day=round(sum(pace.grew) / pace.days, 3))
         if sum(1 for x in pace.moved if abs(x) > 1e-9) >= ENOUGH and pace.per_day() > 1e-9:
             series = pace.moved
@@ -354,7 +350,7 @@ def _both_dates(found):
 
 
 def _likely_done(found):
-    """A percent is per group, and a date is of what it says it is."""
+    """A date is of what it says it is."""
     return "All groups: likely done" if found.get("all_groups") else "Likely done"
 
 
@@ -459,7 +455,7 @@ def text(found):
     if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]):
         L += [""] + _date_table(found) + [""]
     if found["rows"]:
-        L.append(f"Scope now: {_plural(found['rows'], 'row')}, strict {render.pct(found['strict'])}, weighted {render.pct(found['weighted'])}.")
+        L.append(f"Scope now{', all groups' if found.get('all_groups') else ''}: {_plural(found['rows'], 'row')}, strict {render.pct(found['strict'])}, weighted {render.pct(found['weighted'])}.")
     if found["state"] != "shallow" and found["moving_days"]:
         words = f"Rows moved on {found['moving_days']} of {_plural(found['window_days'], 'day')}."
         if found["state"] == "dated":
@@ -490,6 +486,7 @@ def text(found):
             else:
                 when = f"{_rows_words(w['left'])} left"
             L.append(f"  {name:<{width}}  {when}")
+    L += [chart.TOO_MUCH_HISTORY] if found["newest_only"] else []
     L += [f"⚠ {render.one_line(words)}" for words in found["plan_problems"]]
     return "\n".join(L)
 
@@ -548,7 +545,7 @@ def against(plan, base, today=None):
     pace = read_pace(plan, today=today)
     moved = None
     if pace is not None:
-        weights, strict = _credit(plan), plan.strict_kind.name
+        weights, strict = plan.credit, plan.strict_kind.name
 
         def left(kinds):
             return sum(1 - weights.get(k, 0.0) for k in kinds.values()), sum(k != strict for k in kinds.values())
