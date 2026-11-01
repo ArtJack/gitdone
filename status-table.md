@@ -23,8 +23,8 @@ from it.
 | 9 | The hook survives a plugin update, a moved checkout and a replaced Python | Live | Falls back from the installing engine to PATH, the plugin, then `uvx`. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 10 | Plan discovery names no private folder | Live | The plan may be the pointer file itself. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 11 | MIT license and the policy files | Live | LICENSE, CONTRIBUTING, SECURITY, AGENTS, llms.txt, issue templates. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
-| 12 | CI on three operating systems, on the floor and the newest Python | Partial | Written and lint-clean with actionlint; it has never run, because there is no remote. |
-| 13 | A release workflow by Trusted Publishing that refuses a mismatched tag | Partial | Written and lint-clean; never run. PyPI needs the trusted publisher set up by its owner. |
+| 12 | CI on three operating systems, on the floor and the newest Python | Live | Green on all three. On Windows the tests that need a POSIX shell are left out. *(Live 2026-10-31: `1a8403d`; was Partial)* |
+| 13 | A release workflow by Trusted Publishing that refuses a mismatched tag | Partial | Written and lint-clean, and the trusted publisher is set up on PyPI. It has not run yet. |
 | 14 | The name reserved on PyPI | Not built | `gitdone` was free on 2026-10-31; reserving it leaves the machine, so it waits for the first push. |
 
 ### 3. Onboarding (7)
@@ -47,8 +47,8 @@ from it.
 | 22 | A badge, kept with the view and held to the table, or as a shields.io endpoint | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 23 | `report`: the evidence row by row | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 24 | `portfolio`: every tracked project on one page | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
-| 25 | A GitHub Action: annotations, one comment, a badge branch | Partial | The script and the logic are tested against stubs and a local remote; never run on GitHub. |
-| 26 | This README shows its own badge and chart | Partial | The badge is there, written with the view; the chart comes from the Action, which needs a first push. |
+| 25 | A GitHub Action: annotations, one comment, a badge branch | Partial | Runs on GitHub: the gate and the badge branch. The comment on a pull request has not run there yet. |
+| 26 | This README shows its own badge and chart | Partial | Both are there. The chart's link needs the repository to be public. |
 
 ### 5. Evidence and agents (10)
 
