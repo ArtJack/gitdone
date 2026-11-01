@@ -220,13 +220,18 @@ class Plan:
         self.groups = [self._group(g) for g in _typed(data, "groups", list, [])]
         self.workstreams = _typed(data, "workstreams", list, [])
         for w in self.workstreams:
-            if not isinstance(w, dict) or not isinstance(w.get("id"), (str, int)):
+            if not isinstance(w, dict) or "id" not in w or isinstance(w["id"], (list, dict)):
                 raise PlanError(f"workstreams: each one needs an id, a word or a number, got {w!r}")
-            w["id"] = str(w["id"])
+            if isinstance(w["id"], int):
+                w["id"] = str(w["id"])
         self.order = [str(ws_id) if isinstance(ws_id, int) else ws_id for ws_id in _typed(data, "order", list, [w["id"] for w in self.workstreams])]
+        for ws_id in self.order:
+            if isinstance(ws_id, (list, dict)):
+                raise PlanError(f"order: each one names a workstream, got {ws_id!r}")
         self._named_workstreams = {}
         for w in self.workstreams:
-            self._named_workstreams.setdefault(w["id"], w)
+            if isinstance(w["id"], str):
+                self._named_workstreams.setdefault(w["id"], w)
         try:
             self.focus = self._signal_focus(data)
         except Exception as err:  # the gate's rules are read strictly, and this is not one of them
@@ -288,7 +293,7 @@ class Plan:
         if not isinstance(paths, dict):
             self.signal_problems.append(f"focus: paths: expected rows or workstreams and their file patterns, got {paths!r}, so it is ignored")
             paths = {}
-        ids = {w["id"] for w in self.workstreams}
+        ids = {w["id"] for w in self.workstreams if isinstance(w["id"], str)}
         out["paths"], named = {}, 0
         for key, patterns in paths.items():
             if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):

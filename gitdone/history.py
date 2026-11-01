@@ -186,7 +186,8 @@ def delta(plan, since=None, today=None):
     """One line: the percentages then and now, the rows that moved, the workstreams that did and did not."""
     d = delta_data(plan, since=since, today=today)
     head = f"Since {d['since']}" if d["older_commit_found"] else f"No commit of the table before {d['since']}; since its first commit"
-    line = f"{head} ({d['base']}, {d['base_date']}): " + "; ".join(_group_words(g) for g in d["groups"]) + ". "
+    said = d["base_date"] if d["since"] == d["base"] else f"{d['base']}, {d['base_date']}"
+    line = f"{head} ({said}): " + "; ".join(_group_words(g) for g in d["groups"]) + ". "
     line += _moved_words(d["moved"]) + _workstream_words(d["workstreams_moved"], d["workstreams_not_moved"])
     if d["new_rows"]:
         line += f" {len(d['new_rows'])} rows are new since then."

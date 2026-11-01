@@ -9,6 +9,7 @@ import datetime
 import fnmatch
 import os
 import pathlib
+import posixpath
 import re
 import time
 
@@ -33,14 +34,14 @@ NOTHING_READ = "the history is too large to read in time"
 ROW_WORDS = re.compile(r"\b(rows?)[\s:#_-]*#?(\d{1,9}(?:\s*(?:,|&|\band\b|-|–|\bto\b)\s*#?\d{1,9})*)", re.I)
 ROW_ITEM = re.compile(r"(\d{1,9})(?:\s*(?:-|–|\bto\b)\s*(\d{1,9}))?", re.I)
 PULL_REQUEST = re.compile(r"(?:\(#|pull request #)(\d{1,9})\b", re.I)
-MERGE_INTO = re.compile(r"^Merge (?:remote-tracking )?branch '([^']+)'(?: of \S+)? into ")
+MERGE_INTO = re.compile(r"^Merged? (.+?) into \S+(.*)$")
 MERGE_REQUEST = re.compile(r"See merge request \S*!(\d{1,9})\b")
 REVERT_SUBJECT = re.compile(r"^revert\b", re.I)
 UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^bump\b", re.I)
 COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 NUMSTAT = re.compile(r"^(\d+|-)\t(\d+|-)\t(.*)$", re.S)
-TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "*/tests/*", "*/test/*", "*/spec/*", "*/specs/*", "*/__tests__/*", "test_*", "*/test_*",
-         "*_test.*", "*.test.*", "*.spec.*")
+TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "e2e/*", "cypress/*", "*/tests/*", "*/test/*", "*/spec/*", "*/specs/*", "*/__tests__/*", "*/e2e/*", "*/cypress/*", "*Tests/*", "*Test/*",
+         "test_*", "*/test_*", "tests.*", "*/tests.*", "*_test.*", "*_spec.*", "*.test.*", "*.spec.*", "*.cy.*", "*Test.*", "*Tests.*")
 UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", "*/.github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
                         ".pre-commit-config.yaml", "LICENSE*", "*.lock", "package-lock.json", "pnpm-lock.yaml", "go.sum", "go.mod", "Makefile", "Dockerfile*",
                         "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml")
@@ -124,9 +125,11 @@ def read_commits(repo, *spec, stdin_text=None, budget=None):
 
 
 def _sampled(files):
-    """A list of files past what a person could mean, as both its ends: a tree sorts `docs` before `src`, and the first of them alone would say it was all docs."""
-    half = MOST_FILES_IN_A_COMMIT // 2
-    return files if len(files) <= MOST_FILES_IN_A_COMMIT else files[:half] + files[half - MOST_FILES_IN_A_COMMIT:]
+    """A list of files past what a person could mean, taken evenly: a tree sorts `docs` before `src` before `tests`, and one end of it alone would say it was all docs."""
+    if len(files) <= MOST_FILES_IN_A_COMMIT:
+        return files
+    step = (len(files) - 1) / (MOST_FILES_IN_A_COMMIT - 1)
+    return [files[round(at * step)] for at in range(MOST_FILES_IN_A_COMMIT)]
 
 
 def _commits_in(said):
@@ -182,6 +185,17 @@ def _from_plan_folder(repo, plan_dir):
     return lambda path: path[len(prefix) + 1:] if path.startswith(prefix + "/") else path
 
 
+def _patterns_from_plan(repo, plan_dir):
+    """A plan's pattern as it reads against a commit's path: one that climbs out of the plan's folder, `../src/*`, is a path from the folder above it."""
+    try:
+        prefix = os.path.relpath(os.path.realpath(plan_dir), os.path.realpath(repo)).replace(os.sep, "/")
+    except ValueError:
+        return lambda pattern: pattern
+    if prefix == "." or prefix.startswith(".."):
+        return lambda pattern: pattern
+    return lambda pattern: posixpath.normpath(f"{prefix}/{pattern}") if pattern.startswith("../") else pattern
+
+
 class _Reading:
     """What is needed to judge a commit: the rows, what each cites, what the plan ties to them, and what the table's history shows."""
 
@@ -212,10 +226,11 @@ class _Reading:
                     self.merge_requests.setdefault(int(claim.value), set()).add(row.num)
         self.paths = self._paths(plan)
         self.workstreams = {w["id"]: {n for n in render.workstream_rows_numbers(w) if n in self.known} for w in plan.workstreams
-                            if isinstance(w.get("id"), str) and re.search(r"\d", w["id"]) and re.search(r"[A-Za-z]", w["id"])}
+                            if isinstance(w.get("id"), str) and re.search(r"\d", w["id"]) and re.search(r"[^\W\d_]", w["id"])}
         self.workstream_word = re.compile(r"^(" + "|".join(re.escape(w) for w in sorted(self.workstreams, key=len, reverse=True)) + r"):") if self.workstreams else None
-        self.upkeep = list(UPKEEP_FILES) + plan.focus.get("upkeep", [])
-        self.not_upkeep = plan.focus.get("not_upkeep", [])
+        from_plan = _patterns_from_plan(self.repo, plan.dir)
+        self.upkeep = list(UPKEEP_FILES) + [from_plan(pattern) for pattern in plan.focus.get("upkeep", [])]
+        self.not_upkeep = [from_plan(pattern) for pattern in plan.focus.get("not_upkeep", [])]
         self.to_plan = _from_plan_folder(self.repo, plan.dir)
         self.tracker = self._tracker_files(plan, plan.tracked)
         self._life, self._names, self.names_cut = None, None, False
@@ -261,10 +276,11 @@ class _Reading:
 
     def _paths(self, plan):
         out = []
-        ids = {w["id"]: w for w in plan.workstreams}
+        ids = {w["id"]: w for w in plan.workstreams if isinstance(w["id"], str)}
+        from_plan = _patterns_from_plan(self.repo, plan.dir)
         for key, patterns in plan.focus.get("paths", {}).items():
             rows = render.workstream_rows_numbers(ids[key]) if key in ids else numbers(key, f"focus: paths: {key}")
-            out.append((set(rows) & self.known, patterns))  # only what the table has: the plan said a few bytes cannot ask for much, and here they ask for nothing to be kept
+            out.append((set(rows) & self.known, [from_plan(pattern) for pattern in patterns]))  # only what the table has: the plan said a few bytes cannot ask for much, and here they ask for nothing to be kept
         return out
 
     def _tracker_files(self, plan, paths):
@@ -365,12 +381,21 @@ BRANCH_FOR_THE_ROW = "its branch is named for the row"
 
 
 def _said_by_a_merge(message):
-    """What a merge's message says of what it brings. `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and its subject says nothing about that work.
-    A list of what it brings, under `merge.log`, is git's and not anybody's word.
+    """What a merge's message says of what it brings. `Merge main into row-3-x` brings main's work into the row's branch, and where it went says nothing about that work.
+    The list `merge.log` writes, `* main:` and what is under it, is git's and not anybody's word.
     """
     subject, _, body = message.partition("\n")
     into = MERGE_INTO.match(subject)
-    return "\n".join([into.group(1) if into else subject] + [line for line in body.split("\n") if line and not line[0].isspace() and not line.startswith("* ")])
+    said, in_a_log = [into.group(1) + into.group(2) if into else subject], False
+    for line in body.split("\n"):
+        if line.startswith("* ") and line.rstrip().endswith(":"):
+            in_a_log = True
+        elif not line.startswith((" ", "\t")):
+            in_a_log = False
+            said.append(line)
+        elif not in_a_log:
+            said.append(line)
+    return "\n".join(said)
 
 
 def _inherited(reading, commits):
@@ -530,8 +555,8 @@ def _began(plan, life=None):
     life = history.table_commits(top, rel, topological=True) if life is None else life
     if life and gitio.git(top, "cat-file", "-e", f"{life[-1][0]}^:{life[-1][2]}").code:  # it was not there before this commit
         return life[-1][:2]
-    first = min(life[-1:] + history.table_commits(top, rel, first_parent=True)[-1:], key=lambda commit: commit[1], default=None)
-    return first[:2] if first else None
+    first = (history.table_commits(top, rel, first_parent=True) or life)[-1:]
+    return first[0][:2] if first else None
 
 
 def written_since(repo, began, commits):

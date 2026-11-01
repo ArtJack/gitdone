@@ -1516,7 +1516,11 @@ class TheThirdAttack(Case):
         self.write_plan(workstreams=[{"id": ["a"]}])
         done = self.engine("check", "--offline")
         self.assertEqual(done.returncode, 2)
-        self.assertIn("a word", done.stderr + done.stdout)
+        self.assertIn("a word or a number", done.stderr + done.stdout)
+        self.write_plan(order=[["a"]])
+        done = self.engine("check", "--offline")
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("names a workstream", done.stderr + done.stdout)
 
     def test_a_list_of_mistakes_has_an_end(self):
         self.write_table()
@@ -2135,18 +2139,6 @@ class TheFifthAttack(Case):
         return requirements.coverage(self.plan(), tables.load_clean(self.plan()))
 
     # X1: a requirement lost is a gap nobody sees
-    def test_x1_an_id_is_read_wherever_the_table_keeps_it(self):
-        for heading in ("Requirement", "User Story", "Ticket", "Identifier", "ReqID", "Req. ID", "Anything at all"):
-            with self.subTest(heading):
-                text = f"| # | {heading} | Status |\n|---|---|---|\n| 1 | REQ-2: Export data | Open |\n| 2 | REQ-3 | Delete it |\n"
-                self.assertEqual(self.parsed(text), [("REQ-2", "Export data"), ("REQ-3", "Delete it")])
-
-    def test_x1_nor_does_it_need_a_heading_or_a_rule(self):
-        for text in ("| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n", "| # | R |\n|---|---|\n| 1 | REQ-2: Export data |\n\nSome words.\n\n| 2 | REQ-3: Delete |\n",
-                     "| # | R |\n---|---\n| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n"):
-            with self.subTest(text[:20]):
-                self.assertEqual(self.parsed(text), [("REQ-2", "Export data"), ("REQ-3", "Delete")])
-
     def test_x1_the_gap_stays_open(self):
         self.named("Login", "Thing two")
         self.write_table()
@@ -2453,6 +2445,281 @@ class TheFifthAttack(Case):
         with unittest.mock.patch.object(gitio, "objects", return_value=None):
             found = self.found()
         self.assertEqual((found["commits"], found["newest_only"]), (0, True))
+
+
+class WhatATableInASpecSays(Case):
+    """Five readers each found a rule for a table in a spec losing requirements or inventing them, and each new rule broke what the last had fixed. So every shape any of them tried is here at once."""
+
+    SHAPES = (
+        ("the usual one", "| ID | Requirement | Priority |\n|---|---|---|\n| REQ-1 | Sign in | High |\n", [("REQ-1", "Sign in")]),
+        ("numbered", "| # | ID | Requirement |\n|---|---|---|\n| 1 | REQ-12 | In a numbered table |\n| 2 | **REQ-13** | Marked |\n| 3 | REQ-14: Its own words | high |\n| 4 | See REQ-1 | no |\n| 5 | UTF-8 | no |\n",
+         [("REQ-12", "In a numbered table"), ("REQ-13", "Marked"), ("REQ-14", "Its own words")]),
+        ("words before the id", "| Title | ID | Priority |\n|---|---|---|\n| Sign in | REQ-1 | High |\n| Export | REQ-2 | High |\n", [("REQ-1", "Sign in"), ("REQ-2", "Export")]),
+        ("words after the id", "| Priority | Req ID | Requirement |\n|---|---|---|\n| High | REQ-1 | Sign in |\n", [("REQ-1", "Sign in")]),
+        ("the id last", "| Title | ID |\n|---|---|\n| Sign in | REQ-1 |\n", [("REQ-1", "Sign in")]),
+        ("headed Ref", "| Thing | Ref |\n|---|---|\n| Sign in | REQ-1 |\n", [("REQ-1", "Sign in")]),
+        ("the first column, whatever it is called", "| Thing | Words |\n|---|---|\n| REQ-1 | Sign in |\n| REQ-2: Export | High |\n", [("REQ-1", "Sign in"), ("REQ-2", "Export")]),
+        ("no heading at all", "| REQ-1 | Sign in |\n", [("REQ-1", "Sign in")]),
+        ("prose in a cell", "| Feature | Status |\n|---|---|\n| Export | REQ-3 was dropped in v2 |\n", []),
+        ("a reference", "| Area | Depends on |\n|---|---|\n| Billing | REQ-2 |\n", []),
+        ("its colon anywhere", "| # | Anything at all | Status |\n|---|---|---|\n| 1 | REQ-2: Export data | Open |\n| 2 | ENG-3: Delete account | Open |\n", [("REQ-2", "Export data"), ("ENG-3", "Delete account")]),
+        ("no rule", "| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n", [("REQ-2", "Export data"), ("REQ-3", "Delete")]),
+        ("resumed after text", "| # | R |\n|---|---|\n| 1 | REQ-2: Export data |\n\nSome words.\n\n| 2 | REQ-3: Delete |\n", [("REQ-2", "Export data"), ("REQ-3", "Delete")]),
+        ("a rule with no outer pipes", "| # | R |\n---|---\n| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n", [("REQ-2", "Export data"), ("REQ-3", "Delete")]),
+        ("no outer pipes at all", "ID | Title\n---|---\nREQ-7 | No outer pipes\n", [("REQ-7", "No outer pipes")]),
+        ("a parent beside the id", "| Parent | ID | Title |\n|---|---|---|\n| REQ-90 | REQ-10 | Login |\n", [("REQ-10", "Login")]),
+        ("a title that looks like an id", "| Title | ID | Priority |\n|---|---|---|\n| SMS-2 login | REQ-9 | High |\n", [("REQ-9", "SMS-2 login")]),
+        ("a summary with no words", "| ID | Priority | Status |\n|---|---|---|\n| REQ-1 | Must | Approved |\n", [("REQ-1", "")]),
+        ("a revision history", "| Date | Version | Author | Ticket |\n|---|---|---|---|\n| 2026-01-02 | 1.0 | Ana | ENG-101 |\n", []),
+        ("a risk register", "| Risk | Severity | Mitigation | Owner |\n|---|---|---|---|\n| Printer jams | SEV-2 | Spare printer | Ana |\n| R-1 | SEV-1 | Backups | Ben |\n", []),
+        ("a schedule", "| Milestone | Date | Tracking |\n|---|---|---|\n| Beta | March | ENG-200 |\n| Q1-2027 | June | ENG-201 |\n", []),
+        ("a glossary", "| Term | Meaning | Standard |\n|---|---|---|\n| Certificate | What the kiosk presents | X-509 |\n| Serial port | What the printer uses | RS-232 |\n", []),
+        ("a test matrix", "| Test | Covers | Result |\n|---|---|---|\n| TC-1 | REQ-1 | Pass |\n", []),
+        ("what a test covers", "| Covers | Test |\n|---|---|\n| REQ-15 | test_login |\n", []),
+        ("the id starts a Requirement column", "| # | Requirement | Priority |\n|---|---|---|\n| 1 | REQ-1 Sign in with a magic link | Must |\n", [("REQ-1", "Sign in with a magic link")]),
+        ("after a status", "| Status | Requirement |\n|---|---|\n| Open | REQ-2 Export to PDF |\n", [("REQ-2", "Export to PDF")]),
+        ("an epic and its story", "| Epic | Story | Title |\n|---|---|---|\n| EP-1 | US-1 | Print a receipt |\n", [("US-1", "Print a receipt")]),
+        ("words in a Ref column", "| Feature | Ref |\n|---|---|\n| Login | REQ-3 Remember me |\n", [("REQ-3", "Remember me")]),
+        ("a link to it", "| ID | Title |\n|---|---|\n| [REQ-4](#req-4) | Dark mode |\n", [("REQ-4", "Dark mode")]),
+        ("two in one cell", "| ID | Title |\n|---|---|\n| REQ-5, REQ-6 | Two in one cell |\n", [("REQ-5", "Two in one cell"), ("REQ-6", "Two in one cell")]),
+        ("a feature beside its description", "| Feature | ID | Description |\n|---|---|---|\n| Auth | REQ-1 | Sign in with a magic link |\n", [("REQ-1", "Sign in with a magic link")]),
+        ("an owner's name", "| ID | Owner name | Requirement |\n|---|---|---|\n| REQ-2 | Ana | Export to PDF |\n", [("REQ-2", "Export to PDF")]),
+        ("a user story", "| ID | As a | I want | So that |\n|---|---|---|---|\n| US-1 | clerk | to print a receipt | I can hand it over |\n", [("US-1", "to print a receipt")]),
+        ("a number is no words", "| # | ID | Priority |\n|---|---|---|\n| 1 | REQ-2 | High |\n", [("REQ-2", "")]),
+    )
+
+    def parsed(self, text):
+        return [(item.ident, item.words) for item in requirements.parse(text, "spec.md")]
+
+    def test_every_shape(self):
+        for name, text, wanted in self.SHAPES:
+            with self.subTest(name):
+                self.assertEqual(self.parsed(text), wanted)
+
+    def test_any_of_these_headings_holds_ids(self):
+        for heading in ("ID", "Id", "Req ID", "Req. ID", "ReqID", "Requirement ID", "Identifier", "Requirement", "User Story", "Story", "Ref", "Key", "#", "No."):
+            with self.subTest(heading):
+                self.assertEqual(self.parsed(f"| Thing | {heading} | Other |\n|---|---|---|\n| Sign in | REQ-2 | Delete it |\n")[0][0], "REQ-2")
+
+    def coverage(self, spec, *names):
+        self.rows = {i: (name, "Not built") for i, name in enumerate(names, 1)}
+        self.write_table()
+        (self.repo / "spec.md").write_text(spec)
+        self.write_plan(requirements=["spec.md"])
+        return requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+
+    SPEC = ("# Bramble kiosk\n\n## Revision history\n\n| Date | Version | Author | Ticket |\n|---|---|---|---|\n| 2026-01-02 | 1.0 | Ana | ENG-101 |\n\n## Requirements\n\n"
+            "### REQ-1 Sign in with a magic link\n\n### REQ-2 Export to PDF\n\n## Risks\n\n| Risk | Severity | Mitigation | Owner |\n|---|---|---|---|\n| Printer jams | SEV-2 | Spare printer | Ana |\n")
+
+    def test_a_real_spec_s_other_tables_do_not_fill_the_matrix(self):
+        found = self.coverage(self.SPEC, "Sign in with a magic link", "Export to PDF")
+        self.assertEqual(found["without"], [])
+        self.assertEqual([item.ident for item, _ in found["items"]], ["REQ-1", "REQ-2"])
+
+    def test_and_what_they_held_is_said_where_the_matrix_is_read(self):
+        found = self.coverage(self.SPEC, "Sign in with a magic link", "Export to PDF")
+        self.assertEqual([item.ident for item in found["passed_over"]], ["ENG-101", "SEV-2"])
+        words = trace.markdown(self.plan(), offline=True)
+        self.assertIn("2 ids in tables were not read as requirements, the first ENG-101 at spec.md:7", words)
+        self.assertEqual(trace.data(self.plan(), offline=True)["not_read"][0], {"id": "ENG-101", "where": "spec.md:7"})
+
+    def test_but_not_on_every_commit(self):
+        self.coverage(self.SPEC, "Sign in with a magic link", "Export to PDF")
+        self.engine("render", "--write")
+        done = self.engine("check", "--offline")
+        self.assertEqual(done.returncode, 0)
+        self.assertNotIn("ENG-101", done.stdout + done.stderr)
+
+    def test_an_id_a_list_defines_was_not_passed_over(self):
+        found = self.coverage("| Area | Depends on |\n|---|---|\n| Billing | REQ-2 |\n\n- REQ-2: Export\n", "Export")
+        self.assertEqual((found["without"], found["passed_over"]), ([], []))
+
+    def test_a_definition_outranks_a_summary_s_guess(self):
+        found = self.coverage("| ID | Priority | Status |\n|---|---|---|\n| REQ-1 | Must | Approved |\n| REQ-2 | Should | Draft |\n\n### REQ-1 Sign in with a magic link\n\n- REQ-2: Export to PDF\n", "Sign in with a magic link", "Export to PDF")
+        self.assertEqual(found["without"], [])
+        self.assertEqual([item.label() for item, _ in found["items"]], ["REQ-1 Sign in with a magic link", "REQ-2 Export to PDF"])
+
+    def test_a_table_s_own_words_are_not_outranked(self):
+        found = self.coverage("| ID | Title |\n|---|---|\n| REQ-1 | Login with SMS |\n| REQ-2 | Export data |\n\n### REQ-1\n\nDetails.\n\n- REQ-2: see the table above\n", "Login with SMS", "Export data")
+        self.assertEqual(found["without"], [])
+
+    def test_a_fresh_start_has_the_real_words_and_no_more(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("| ID | Priority | Status |\n|---|---|---|\n| REQ-1 | Must | Approved |\n| REQ-2 | Should | Draft |\n\n### REQ-1 Sign in with a magic link\n\n- REQ-2: Export to PDF\n\n" + self.SPEC)
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Sign in with a magic link", "Export to PDF"])
+
+    def test_a_fresh_start_on_a_summary_alone_names_the_row_by_its_id(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("| ID | Priority | Status |\n|---|---|---|\n| REQ-1 | Must | Approved |\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["REQ-1"])
+
+
+class TheSixthAttack(Case):
+    """What a sixth reader found in the fixes for the fifth: Y1 to Y17. The tables are in WhatATableInASpecSays."""
+
+    named, set_row, found, judged, merge_commit, spec = (TheFourthAttack.named, TheFourthAttack.set_row, TheFourthAttack.found, TheFourthAttack.judged,
+                                                         TheFourthAttack.merge_commit, TheFourthAttack.spec)
+
+    def test_a_commit_named_as_the_start_is_not_named_twice(self):
+        self.write_table()
+        sha = self.commit("2026-03-01", "first")
+        self.commit("2026-03-02", "row 1: work", files={"a.py": "1\n"}, table=False)
+        self.assertTrue(history.delta(self.plan(), since=sha[:7], today=datetime.date(2026, 3, 5)).startswith(f"Since {sha[:7]} (2026-03-01): "))
+
+    # Y3, Y13: a word is its marks too
+    def test_y3_a_mark_that_combines_with_a_letter_is_part_of_the_word(self):
+        for one, other in (("मेल हटाएं", "माल हटाएं"), ("ใช้อีเมล", "ใช่อีเมล"), ("நாள் மாற்று", "நீள் மாற்று"), ("má", "mà"), ("café", "cafe")):
+            with self.subTest(one):
+                self.assertNotEqual(requirements._said(one), requirements._said(other))
+
+    def test_y3_and_the_same_word_composed_or_not_is_the_same_word(self):
+        self.assertEqual(requirements._said("café"), requirements._said("café"))
+
+    def test_y13_every_currency_and_a_number_in_parentheses(self):
+        for one, other in (("Fee is ₹100", "Fee is ₩100"), ("Tip of 50¢", "Tip of 50"), ("Under ＜10MB", "Under ＞10MB"), ("Limit (1000000) rows", "Limit (2000000) rows")):
+            with self.subTest(one):
+                self.assertNotEqual(requirements._said(one), requirements._said(other))
+
+    def test_y13_and_a_commit_in_parentheses_is_still_not_a_word(self):
+        self.assertEqual(requirements._said("Export (abc1234)"), requirements._said("Export"))
+
+    # Y4, Y8: what a merge's message says
+    def merged(self, message, subject="Inside work"):
+        self.named("Export", "Billing", "Search")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "export")
+        self.commit("2026-03-02", subject, files={"a.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.commit("2026-03-03", "Main work", files={"m.py": "1\n"}, table=False)
+        self.merge_commit("export", day="2026-03-04", message=message)
+        return self.judged()[subject]
+
+    def test_y4_a_person_s_bullet_in_a_merge_description_is_their_word(self):
+        self.assertEqual(self.merged("Merge pull request #12 from acme/export\n\nExport to PDF\n\n* Implements row 3\n* Adds tests")["rows"], [3])
+
+    def test_y4_so_is_an_indented_line(self):
+        self.assertEqual(self.merged("Merge pull request #12 from acme/export\n\n  Closes row 3 for good")["rows"], [3])
+
+    def test_y4_what_merge_log_lists_under_its_heading_is_not(self):
+        self.assertNotEqual(self.merged("Merge branch 'export'\n\n* export:\n  row 3: a word from inside\n")["class"], focus.ON)
+
+    def test_y8_where_a_merge_went_says_nothing_of_what_it_brought(self):
+        for message in ("Merge main into row-3-x", "Merged main into row-3-x", "Merge tag 'v1.2' into row-3-x", "Merge commit 'abc1234' into row-3-x", "Merge branches 'main' and 'hotfix' into row-3-x", "Merge branch 'main' into row-3-x"):
+            with self.subTest(message):
+                self.assertEqual(focus._said_by_a_merge(message).find("row-3"), -1)
+
+    def test_y8_where_it_came_from_does(self):
+        self.assertEqual(focus.named_rows(focus._said_by_a_merge("Merge branch 'row-3-x' into main"), {3}), {3})
+        self.assertEqual(focus.named_rows(focus._said_by_a_merge("Merge export into main for row 3"), {3}), {3})
+
+    # Y5, Y9: what a test is
+    def test_y5_data_in_a_test_s_folder_is_not_a_test(self):
+        for path in ("tests/golden/login.jsonl", "src/test/resources/seed.sql", "tests/lib/a.class", "tests/a.ndjson", "tests/a.har", "tests/a.xlsx", "tests/a.docx", "tests/a.webp", "tests/a.ico", "tests/a.webm", "tests/a.pkl",
+                     "tests/a.npy", "tests/a.proto", "tests/a.properties", "tests/a.pyc", "tests/a.so", "tests/a.out", "tests/a.expected", "tests/helpers.py", "spec/spec_helper.rb", "tests/jest.config.js"):
+            with self.subTest(path):
+                self.assertFalse(trace._is_test(path))
+
+    def test_y9_these_layouts_are_tests(self):
+        for path in ("MyApp.Tests/LoginTests.cs", "Tests/AppTests/LoginTests.swift", "polls/tests.py", "cypress/e2e/login.cy.ts", "src/androidTest/java/LoginTest.kt", "lib/a_spec.rb", "e2e/login.ts", "src/main/LoginTest.java"):
+            with self.subTest(path):
+                self.assertTrue(trace._is_test(path))
+
+    def test_y9_and_a_commit_of_only_those_is_upkeep(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-05", "A swift test alone", files={"Tests/AppTests/SignoutTests.swift": "1\n"}, table=False)
+        self.assertEqual(self.judged()["A swift test alone"]["class"], focus.UPKEEP)
+
+    def test_y9_a_test_in_a_language_not_listed_can_be_named(self):
+        self.named("A")
+        self.write_table()
+        table = self.repo / "status-table.md"
+        table.write_text(table.read_text().replace("| 1 | A | Not built |  |", "| 1 | A | Not built | `tests/a.foo` |"))
+        self.commit("2026-03-01", "start", files={"tests/a.foo": "1\n"}, table=False)
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/a.foo"])
+
+    # Y10: a commit past the list of files
+    def test_y10_work_between_two_runs_of_docs_and_tests_is_seen(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Import the service", files={**{f"docs/{i}.md": "1\n" for i in range(3)}, **{f"src/{i}.py": "1\n" for i in range(3)}, **{f"tests/test_{i}.py": "1\n" for i in range(3)}}, table=False)
+        with unittest.mock.patch.object(focus, "MOST_FILES_IN_A_COMMIT", 3):
+            self.assertEqual(self.judged()["Import the service"]["class"], focus.OFF)
+
+    # Y11: a table that arrived in a merge, and an edit on the same day
+    def test_y11_it_began_at_the_merge_whatever_the_day(self):
+        self.plan_path.unlink()
+        self.named("Login", "Export")
+        self.commit("2026-03-01", "mono base", files={"app.py": "a\n"}, table=False)
+        git(self.repo, "checkout", "-q", "--orphan", "imported")
+        git(self.repo, "rm", "-q", "-r", "-f", ".")
+        self.write_plan()
+        imported = self.commit("2026-03-05", "project history")
+        git(self.repo, "checkout", "-q", "main")
+        git(self.repo, "merge", "-q", "-s", "ours", "--no-commit", "--allow-unrelated-histories", imported)
+        git(self.repo, "read-tree", "--prefix=proj/", "-u", imported)
+        git(self.repo, "commit", "-q", "-m", "Subtree import of proj", env={"GIT_AUTHOR_DATE": "2026-03-08T12:00:00", "GIT_COMMITTER_DATE": "2026-03-08T12:00:00"})
+        where = self.repo / "proj"
+        self.plan_path = where / ".gitdone.json"
+        self.commit("2026-03-08", "row 1: the same day", files={"tests/test_t.py": "1\n"}, table=False, where=where)
+        (where / "status-table.md").write_text(table_text(self.rows) + "\n")
+        self.commit("2026-03-08", "Touch the table the same day", files={"t.py": "1\n"}, table=False, where=where)
+        self.assertIn("row 1: the same day", self.judged())
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/test_t.py"])
+
+    # Y12: a plan in a folder of its own
+    def test_y12_a_pattern_from_the_plan_s_folder_climbs_out_of_it(self):
+        tracker = self.repo / "tracker"
+        tracker.mkdir()
+        self.plan_path.unlink()
+        self.plan_path = tracker / ".gitdone.json"
+        self.named("Aaa", "Pay")
+        (tracker / "status-table.md").write_text(table_text(self.rows))
+        self.plan_path.write_text(json.dumps({"status_doc": "status-table.md", "repo": "..", "default_branch": "main", "focus": {"paths": {"2": ["../src/pay/*"]}, "upkeep": ["../ops/*"]}}))
+        self.commit("2026-03-01", "adopt", table=False)
+        self.commit("2026-03-02", "Pay work", files={"src/pay/a.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Ops work", files={"ops/a.sh": "1\n"}, table=False)
+        found = self.judged()
+        self.assertEqual((found["Pay work"]["class"], found["Pay work"]["rows"]), (focus.ON, [2]))
+        self.assertEqual(found["Ops work"]["class"], focus.UPKEEP)
+
+    # Y15: a workstream's id
+    def test_y15_nothing_a_plan_passed_with_is_refused_now(self):
+        self.write_table()
+        for keys in ({"workstreams": [{"id": None, "name": "x", "rows": [1]}], "order": []}, {"workstreams": [{"id": 1.5, "rows": [1]}], "order": []}):
+            with self.subTest(str(keys)):
+                self.write_plan(**keys)
+                self.assertEqual(self.engine("render", "--write").returncode, 0)
+                self.assertEqual(self.engine("check", "--offline").returncode, 0)
+                self.assertEqual(self.engine("focus").returncode, 0)
+
+    def test_y15_the_schema_takes_what_the_engine_takes(self):
+        schema = json.loads((pathlib.Path(__file__).resolve().parent.parent / "schema" / "plan.schema.json").read_text())
+        self.assertIn("integer", schema["properties"]["workstreams"]["items"]["properties"]["id"]["type"])
+        self.assertIn("integer", schema["properties"]["order"]["items"]["type"])
+
+    # Y16
+    def test_y16_a_workstream_s_id_can_be_in_any_alphabet(self):
+        self.write_plan(workstreams=[{"id": "Р1", "name": "Кириллица", "rows": [1, 2]}])
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-05", "Р1: работа", files={"a.py": "1\n"}, table=False)
+        self.assertEqual(self.judged()["Р1: работа"]["class"], focus.ON)
+
+    # Y17
+    def test_y17_with_the_code_elsewhere_a_commit_from_before_the_table_named_something_else(self):
+        other = self.tmp / "code"
+        other.mkdir()
+        git(other, "init", "-q", "-b", "main")
+        self.commit("2020-01-01", "row 1: ancient, about a spreadsheet row", files={"tests/test_ancient.py": "1\n"}, table=False, where=other)
+        self.commit("2026-03-10", "row 2: recent", files={"tests/test_recent.py": "1\n"}, table=False, where=other)
+        self.write_plan(repo=str(other))
+        self.commit("2026-03-01", "adopt")
+        rows = {r["row"]: r["tests"] for r in trace.rows_data(self.plan(), offline=True)}
+        self.assertEqual((rows[1], rows[2]), ([], ["tests/test_recent.py"]))
 
 
 if __name__ == "__main__":

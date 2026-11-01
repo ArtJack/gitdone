@@ -9,17 +9,20 @@ from . import focus, gitio, render, report, requirements, table as tables
 
 BACKTICKED = re.compile(r"`([^`\s]+)`")
 MOST_TESTS_SHOWN = 3
+MOST_NOT_READ_SHOWN = 50
+TEST_CODE = frozenset(""".py .pyi .pyx .js .jsx .mjs .cjs .ts .tsx .mts .cts .vue .svelte .astro .coffee .rb .rake .go .rs .java .kt .kts .scala .sc .groovy .gradle .clj .cljs .cljc .swift .m .mm .c .h .cc .cpp .cxx .hh
+    .hpp .hxx .cs .fs .fsx .vb .php .phpt .pl .pm .t .sh .bash .zsh .fish .ps1 .psm1 .bat .cmd .bats .ex .exs .erl .hrl .elm .hs .lhs .ml .mli .re .res .lua .dart .r .jl .nim .zig .cr .d .sol .v .sv .vhd
+    .vhdl .f90 .f .pas .ada .adb .lisp .el .scm .rkt .tcl .awk .purs .gleam .odin .cairo .move .feature .robot .tf .nix .rego""".split())
 NOT_TESTS = ("fixtures/*", "*/fixtures/*", "testdata/*", "*/testdata/*", "tests/data/*", "*/tests/data/*", "test/data/*", "*/test/data/*", "spec/data/*", "*/spec/data/*", "*/__snapshots__/*", "*/snapshots/*",
-             "__init__.py", "*/__init__.py", "conftest.py", "*/conftest.py", "*.json", "*.yaml", "*.yml", "*.txt", "*.csv", "*.tsv", "*.xml", "*.html", "*.md", "*.rst", "*.snap", "*.png", "*.jpg", "*.jpeg", "*.gif",
-             "*.svg", "*.pdf", "*.bin", "*.dat", "*.log", "*.lock", "*.toml", "*.ini", "*.cfg", "*.zip", "*.gz", "*.tar", "*.parquet", "*.db", "*.sqlite", "*.wav", "*.mp3", "*.mp4", "*.ttf", "*.woff", "*.pem", "*.key", "*.crt")
+             "*/resources/*", "*/golden/*", "*/goldens/*", "__init__.py", "*/__init__.py", "conftest.py", "*/conftest.py", "*/helper.*", "*/helpers.*", "*_helper.*", "*.config.*")
 
 
 def _is_test(path):
-    """What a test's folder holds is not all tests: a fixture or a data file a commit touched says nothing about a row being tested. Any other file with a suffix is, since a
-    list of the languages tests are written in would leave some out, and with them a whole project.
+    """What a test's folder holds is not all tests: a fixture or a data file a commit touched says nothing about a row being tested. Data comes in more forms than code does,
+    so it is code that is listed. A test in a language not on the list can be named in the row's note.
     """
     name = path.rsplit("/", 1)[-1]
-    return focus.matches(path, focus.TESTS) and "." in name and not name.startswith(".") and not focus.matches(path, NOT_TESTS)
+    return focus.matches(path, focus.TESTS) and name[name.rfind("."):].lower() in TEST_CODE and not focus.matches(path, NOT_TESTS)
 
 
 def _cell(text):
@@ -41,15 +44,17 @@ def _files_by_commit(repo, shas):
 
 
 def _naming_commits(plan, repo, known):
-    """{row: [(sha, paths)]} from every commit since the table began whose message names a row: `row 1` in a commit from before there was a row 1 was about something else."""
+    """{row: [(sha, paths)]} from every commit since the table began whose message names a row: `row 1` in a commit from before there was a row 1 was about something else.
+    With the code in another repository, or the table in none, only the day can say what came after.
+    """
     out = {}
-    if focus._top(repo) != focus._top(plan.doc.parent):  # the code is elsewhere, and has no history of the table to be before or after
-        commits = focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD")
-    else:
-        began = focus._began(plan)
-        if began is None:
-            return out
-        commits = focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD", f"^{began[0]}^@")
+    top = focus._top(plan.doc.parent)
+    began = focus._began(plan) if top else None
+    if top and began is None:
+        return out
+    limit = [f"^{began[0]}^@"] if began and focus._top(repo) == top else []
+    commits = focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD", *limit)
+    if began:
         kept = {sha for sha, _ in focus.written_since(repo, began, [(c["sha"], c["date"]) for c in commits])}
         commits = [c for c in commits if c["sha"] in kept]
     for commit in commits:
@@ -64,7 +69,7 @@ def _tree(repo):
 
 
 def _says_tests(note, tree):
-    return [word for word in BACKTICKED.findall(note) if word in tree and _is_test(word)]
+    return [word for word in BACKTICKED.findall(note) if word in tree and focus.matches(word, focus.TESTS)]  # someone said so
 
 
 def rows_data(plan, offline=False):
@@ -109,8 +114,8 @@ def data(plan, offline=False):
     top = plan.strict_kind.name
     live = [r for r in rows if r["kind"] == top]
     finished = [e for e in entries if e["rows"] and all(by_number[n]["kind"] == top for n in e["rows"])]
-    return {"requirements": entries, "rows": rows, "problems": found["problems"],
-            "summary": {"requirements": len(entries), "with_a_row": sum(1 for e in entries if e["rows"]), "without_a_row": [e["where"] for e in entries if not e["rows"]],
+    return {"requirements": entries, "rows": rows, "problems": found["problems"], "not_read": [{"id": item.ident, "where": item.where()} for item in found["passed_over"][:MOST_NOT_READ_SHOWN]],
+            "summary": {"requirements": len(entries), "with_a_row": sum(1 for e in entries if e["rows"]), "without_a_row": [e["where"] for e in entries if not e["rows"]], "ids_not_read": len(found["passed_over"]),
                         "requirements_finished": len(finished),
                         "rows": len(rows), "rows_nobody_asked_for": [r.num for r in found["unasked"]],
                         "live": len(live), "live_without_a_test": [r["row"] for r in live if not r["tests"]],
@@ -183,4 +188,8 @@ def markdown(plan, offline=False, today=None):
         L.append("")
     if found["problems"]:
         L += ["## Could not be read", ""] + [f"- {_cell(p)}" for p in found["problems"]] + [""]
+    if found["not_read"]:
+        first = found["not_read"][0]
+        L += [f"{s['ids_not_read']} ids in tables were not read as requirements, the first {_cell(first['id'])} at {_cell(first['where'])}: their columns do not say they hold them. "
+              f"If they are requirements, head the column `ID`, or write `{_cell(first['id'])}: words`.", ""]
     return "\n".join(L)

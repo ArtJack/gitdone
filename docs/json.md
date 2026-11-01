@@ -93,7 +93,7 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 ## The rest
 
 - **`next --json`:** `workstream` (or null), `rows` (each `row`, `name`, `kind`, `note`), `open_rows`.
-- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`, `looks_like`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, and `summary`.
+- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`, `looks_like`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, `not_read` (ids in tables' other columns, each `id`, `where`), and `summary`.
 - **`where --json`:** `plan`, `table`, `view`, `repo`, `default_branch`, `verdict`.
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.
