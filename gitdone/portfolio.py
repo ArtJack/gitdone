@@ -61,8 +61,8 @@ def markdown(entries, today=None):
             continue
         following = f"{e['next']} {e['next_name']}".strip() if e["next"] else ""
         gate_words = {"pass": "pass", "warnings": f"pass, {e['missing']} missing", "fail": f"**fail**, {e['contradicted']} contradicted"}.get(e["gate"], e["gate"])
-        L.append(f"| {e['project']} | {e['rows']} | {e['strict_rows']} ({render.pct(e['strict'])}) | {render.pct(e['weighted'])} | "
-                 f"`{render.bar(e['weighted'], 10)}` | {e['likely'] or ''}{' (all groups)' if e['likely'] and e['all_groups'] else ''} | {following} | {gate_words} |")
+        L.append(f"| {e['project']}{' (all groups)' if e['all_groups'] else ''} | {e['rows']} | {e['strict_rows']} ({render.pct(e['strict'])}) | {render.pct(e['weighted'])} | "
+                 f"`{render.bar(e['weighted'], 10)}` | {e['likely'] or ''} | {following} | {gate_words} |")
     if not entries:
         L.append(f"|  |  |  |  |  |  |  | no {POINTER} found |")
     return "\n".join(L) + "\n"

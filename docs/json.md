@@ -98,6 +98,6 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.
 - **`doctor --json`:** `exit_code` and `items`, each with `state` (`ok`, `warn`, `fail`), `name`, `detail`.
-- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, `left`, in rows. `chart --csv` is the same as CSV. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives, and as CSV `date`, `scope`, `left_all_work`, `left_strict`.
+- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, `left`, in rows. `chart --csv` has the first four. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives, and as CSV `date`, `scope`, `left_all_work`, `left_strict`.
 - **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `all_groups`, `next`, `gate`, or `error`.
 - **`badge`:** prints the JSON a [shields.io endpoint](https://shields.io/badges/endpoint-badge) reads.

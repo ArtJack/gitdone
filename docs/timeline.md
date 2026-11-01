@@ -81,7 +81,7 @@ Last 14 days: 13 commits, 1,437 lines changed.
 ```
 <!-- focus:end -->
 
-Each commit on the current branch in the window (`--days`), since the table's first commit, is one of four. `--all` lists every commit with the reason, and so does `--json`. The areas are where off-plan commits changed the most lines.
+Each commit on the current branch in the window (`--days`), since the table began, is one of four: on from the table's first commit, or on another line and written since that day. `--all` lists every commit with the reason, and so does `--json`. The areas are where off-plan commits changed the most lines.
 
 **On plan** means someone said so:
 
@@ -128,9 +128,9 @@ It reads messages and file names, not code. A commit can say `row 12` and do som
 
 A traceability matrix is usually a spreadsheet somebody keeps by hand, which is why it is usually wrong. This one is read from the plan, the table and git, each time. `--out`, `--offline`, `--json`.
 
-**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); a row of a table with the id in its first column, or in one headed `ID`, `Ref`, `Key`, `Code` or `#`; or a checklist item. A table's words follow the id in its cell, or are in the column headed `Title`, `Name`, `Requirement`, `Description` or `Summary`, or else the next cell. An id anywhere else in a table refers to a requirement and does not define one, and what a list or a heading says of an id outranks what a table says of it. A heading over a plain checklist is that list's section, with an id or without. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
+**Requirements** come from the files you name: `"requirements": ["docs/spec.md", "ROADMAP.md"]`, inside the project. `init --from-checklist` takes a spec of `REQ-12: words` lines, and names the file for you. A plain checklist is not named: a living to-do list is not a list of requirements. In a file, a requirement is `REQ-12: words` in a list at any depth, or on a line of its own with its colon; `REQ-12 words` in a heading (any capitals, a dash and a number: `FR-3`, `US-12`, `AC-7.1`); a row of a table; or a checklist item. A table's row has its id in a column headed `ID`, `Req ID` or `#`, or at the start of its first column, or in any other cell alone or with its colon, so that prose about one stays prose. Its words follow the id in its cell, or are in the column headed `Title`, `Name`, `Requirement`, `Description` or `Summary`, or else the next cell along, or the one before. An id alone in some other cell may only refer to a requirement, so what a list, a heading or a table's own id column says of it outranks that, and a line with no words of its own does not erase the words of one that has them. A heading over a plain checklist is that list's section, with an id or without. Nothing in a code fence or a comment counts, and neither does prose that happens to mention one, nor a standard like `UTF-8`.
 
-**A row holds a requirement** if its name or note has the id, or if it says the same words in the same order, capitals and punctuation aside. `Add SMS login` does not hold `Remove SMS login`, and `step 1` does not hold `step 2`. A mark that changes what is asked is not punctuation: `< 10 MB` is not `> 10 MB`, and `C` is not `C++`. Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
+**A row holds a requirement** if its name or note has the id, or if it says the same words in the same order, capitals and punctuation aside. `Add SMS login` does not hold `Remove SMS login`, and `step 1` does not hold `step 2`. A mark that changes what is asked is not punctuation: a comparison (`< 10 MB`, `!= 200`), a sign (`-1`), `%` and a currency, and `+` or `#` on the end of a word (`C++`, `C#`). Nothing weaker counts, because a guess must not close a gap. When some of the words match, the matrix and `check` say which row it looks like, and you decide:
 
 ```bash
 gitdone link 7 REQ-7
@@ -141,7 +141,7 @@ gitdone link 7 REQ-7
 **The two gaps** are the point. A requirement no row names may be left out of the percent and the date, so the opener warns, and `check` and the Action say so on every run, including a pull request that only changes the spec, which goes in its run's log. It stops nothing:
 it is not a claim anybody made. A row no requirement asks for is scope nobody asked for, or a requirement nobody wrote down.
 
-**Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, from the plan's folder or from `repo`, if it exists. A test is code: a fixture or a data file in a test's folder is not one. With no requirement
+**Tests** on record are the ones that changed in a commit the row cites, or in a commit since the table began that names the row, and that still exist; and any test path in backticks in the row's note, from the plan's folder or from `repo`, if it exists. A fixture or a data file in a test's folder is not a test. With no requirement
 files, the matrix is the rows, with their evidence and tests.
 
 ### What it cannot tell

@@ -106,7 +106,7 @@ def sections_from_checklist(text):
     checklist. `[x]` is the strict kind, and `[ ]` the last kind.
     """
     from . import requirements
-    sections, current, heading, waiting = [], None, "Scope", None
+    sections, current, heading, waiting, seen = [], None, "Scope", None, {}
 
     def section():
         nonlocal current
@@ -118,7 +118,14 @@ def sections_from_checklist(text):
         return current
 
     def from_the_spec(found):  # the id goes in the note, so that the matrix can tie the row back to what asked for it
-        section().rows.append((_clean(found.words) or found.ident, LAST, found.ident))
+        row = (_clean(found.words) or found.ident, LAST, found.ident)
+        held = seen.get(found.ident)
+        if held is None:
+            section().rows.append(row)
+            seen[found.ident] = (found, current.rows, len(current.rows) - 1)
+        elif requirements.outranks(found, held[0]):  # one id is one row, as it is one requirement to the matrix
+            held[1][held[2]] = row
+            seen[found.ident] = (found, held[1], held[2])
 
     for _, line, columns in requirements.lines_with_columns(text):
         if len(line) > requirements.LONGEST_LINE:

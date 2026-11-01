@@ -21,9 +21,10 @@ NEXT_ROWS = 5
 MOST_DAYS = 36500
 MOST_COMMITS_LISTED = 20000
 MOST_SECONDS = 10  # a signal is a favour. Past this it answers for what it read, whatever the history holds
+LONGEST_MESSAGE = 1000000  # read to its end, as far as anyone writes one. A stranger's megabytes are not read for a row
+LONGEST_SUBJECT = 200  # what is shown of one, which may reach an agent's context
 MOST_RANGES = 20
 MOST_FILES_IN_A_COMMIT = 5000
-MOST_TABLE_NAMES = 10  # each is asked of every commit, and a table renames about never
 UPKEEP_SUBJECT_LINES = 50  # a subject can say what a small change is. A large one is judged by what it did
 LARGE_UPKEEP_LINES = 200
 ON, UNCLEAR, UPKEEP, OFF, TRACKER = "on plan", "unclear", "upkeep", "off plan", "tracker"
@@ -105,7 +106,7 @@ def _whole_commits(said):
 def read_commits(repo, *spec, stdin_text=None, budget=None):
     """[{sha, parents, date, message, files: [(path, lines changed)], lines}], newest first. In a repository's subfolder, only what touched that folder, with
     paths from it, so that a tracker in a monorepo answers for its own project and a plan's patterns mean what its other paths mean. A list of files past
-    what a person could mean is read as far as that, since each is tried against every pattern, and `lines` still counts them all. With a `budget`, git has a stage of
+    what a person could mean is sampled, since each is tried against every pattern, and `lines` still counts them all. With a `budget`, git has a stage of
     its time, and what it said in that time is what there is.
     """
     if not is_repository(repo):
@@ -120,6 +121,12 @@ def read_commits(repo, *spec, stdin_text=None, budget=None):
     if done.code:
         raise PlanError(f"focus: git could not read the commits: {done.err.strip()[:200]}")
     return _commits_in(done.out)
+
+
+def _sampled(files):
+    """A list of files past what a person could mean, as both its ends: a tree sorts `docs` before `src`, and the first of them alone would say it was all docs."""
+    half = MOST_FILES_IN_A_COMMIT // 2
+    return files if len(files) <= MOST_FILES_IN_A_COMMIT else files[:half] + files[half - MOST_FILES_IN_A_COMMIT:]
 
 
 def _commits_in(said):
@@ -141,9 +148,8 @@ def _commits_in(said):
             if stat:
                 changed = (int(stat.group(1)) if stat.group(1).isdigit() else 1) + (int(stat.group(2)) if stat.group(2).isdigit() else 0)
                 lines += changed
-                if len(files) < MOST_FILES_IN_A_COMMIT:
-                    files.append((stat.group(3), changed))
-        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip(), "files": files, "lines": lines})
+                files.append((stat.group(3), changed))
+        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip()[:LONGEST_MESSAGE], "files": _sampled(files), "lines": lines})
     return commits
 
 
@@ -164,7 +170,10 @@ def _top(path):
 
 def _from_plan_folder(repo, plan_dir):
     """A plan's paths are from the plan's folder, and a commit's are from the repository's, or from the folder the plan names as `repo`: this turns the second into the first."""
-    prefix = os.path.relpath(os.path.realpath(plan_dir), os.path.realpath(repo)).replace(os.sep, "/")
+    try:
+        prefix = os.path.relpath(os.path.realpath(plan_dir), os.path.realpath(repo)).replace(os.sep, "/")
+    except ValueError:  # on two drives of one machine, neither is a path from the other
+        return lambda path: path
     if prefix == ".":
         return lambda path: path
     if prefix.startswith(".."):
@@ -180,7 +189,6 @@ class _Reading:
         self.plan = plan
         self.capped = False
         self.repo = plan.repo or plan.dir
-        self.ends = time.monotonic() + MOST_SECONDS
         self.same_repository = _top(self.repo) is not None and _top(self.repo) == _top(plan.doc.parent)
         table = tables.load_clean(plan)
         self.table = table
@@ -209,12 +217,8 @@ class _Reading:
         self.upkeep = list(UPKEEP_FILES) + plan.focus.get("upkeep", [])
         self.not_upkeep = plan.focus.get("not_upkeep", [])
         self.to_plan = _from_plan_folder(self.repo, plan.dir)
-        self.table_paths, self.first_table = [], None
-        if self.same_repository:
-            life = _table_life(plan)
-            self.table_paths = list(dict.fromkeys([forecast._where(plan)[1]] + [path for _, _, path in life]))  # a commit from before a rename holds the table under its old name
-            self.first_table = life[-1][0] if life else None
-        self.tracker = self._tracker_files(plan)
+        self.tracker = self._tracker_files(plan, plan.tracked)
+        self._life, self._names, self.names_cut = None, None, False
         self.moved_by, self.finished_on = {}, {}
         top = plan.strict_kind.name
         self.born, self.read_from = None, None
@@ -222,16 +226,32 @@ class _Reading:
             steps, self.born, self.read_from = forecast.table_steps(plan, start, today)
         except PlanError:  # a table outside any repository has no history, and the commits can still be read
             steps = []
-        self.capped = self.read_from is not None or len(self.table_paths) > MOST_TABLE_NAMES
-        del self.table_paths[MOST_TABLE_NAMES:]
         for sha, date, before, after in steps:
             for n in after.keys() & before.keys():
                 if after[n] == top and before[n] != top:
                     self.finished_on[n] = date
+        self.ends = time.monotonic() + MOST_SECONDS
+
+    def life(self):
+        """Every commit that changed the table, in all this history, the first of them last. A walk of all of it, so it is taken when something asks, and once."""
+        if self._life is None:
+            self._life = history.table_commits(*forecast._where(self.plan), topological=True)
+        return self._life
+
+    def table_names(self):
+        """The names the table has had, today's first. A commit from before a rename holds it under its old name, and a commit that renamed it is the tracker's business."""
+        if self._names is None:
+            self._names = list(dict.fromkeys([forecast._where(self.plan)[1]] + [path for _, _, path in self.life()]))
+            top = _top(self.repo)
+            self.tracker |= self._tracker_files(self.plan, [os.path.join(top, name) for name in self._names]) if top else set()
+        return self._names
+
+    def seconds_left(self):
+        return max(self.ends - time.monotonic(), 0)
 
     def seconds_for_a_stage(self):
         """Half of what is left, so that what comes after this has something to answer with."""
-        return max(self.ends - time.monotonic(), 0) / 2
+        return self.seconds_left() / 2
 
     def out_of_time(self):
         if time.monotonic() > self.ends:
@@ -247,14 +267,13 @@ class _Reading:
             out.append((set(rows) & self.known, patterns))  # only what the table has: the plan said a few bytes cannot ask for much, and here they ask for nothing to be kept
         return out
 
-    def _tracker_files(self, plan):
-        """The tracker's files, as a commit in this folder names them, with the names the table has had."""
-        top = _top(self.repo)
-        if top is None:
+    def _tracker_files(self, plan, paths):
+        """These of the tracker's files, as a commit in this folder names them."""
+        if _top(self.repo) is None:
             return set()
         here = os.path.realpath(self.repo)
         out = set()
-        for path in list(plan.tracked) + [os.path.join(top, old) for old in self.table_paths]:
+        for path in paths:
             real = os.path.realpath(path)
             if real.startswith(here + os.sep):
                 out.add(os.path.relpath(real, here).replace(os.sep, "/"))
@@ -301,8 +320,7 @@ class _Reading:
     def judge(self, commit, inherited=None):
         """(class, rows, because) for one commit."""
         files = [path for path, _ in commit["files"]]
-        unread = commit["lines"] - sum(lines for _, lines in commit["files"])  # what sorts past the list of files still counts, as work nobody looked at
-        if not unread and (not files or all(self._is_tracker(path) for path in files)):
+        if not files or all(self._is_tracker(path) for path in files):
             return TRACKER, set(), "only the tracker's own files" if files else "no files"
         subject = commit["message"].split("\n", 1)[0]
         if REVERT_SUBJECT.match(subject):
@@ -319,9 +337,9 @@ class _Reading:
                 return ON, set(inherited[0]), inherited[1]
             return UNCLEAR, set(inherited[0]), f"row {min(inherited[0])} had finished by then"
         work = [(path, lines) for path, lines in commit["files"] if not self._is_tracker(path) and not self._is_upkeep(path)]
-        if not work and not unread:
+        if not work:
             return UPKEEP, set(), "tests, docs or project files"
-        total = sum(lines for _, lines in work) + unread or 1
+        total = sum(lines for _, lines in work) + commit["lines"] - sum(lines for _, lines in commit["files"]) or 1  # what a sample of its files left out is work nobody looked at
         for rows_here, patterns in self.paths:
             reachable = {n for n in rows_here if self._in_reach(n, commit["date"])}
             if reachable and sum(lines for path, lines in work if matches(self.to_plan(path), patterns)) * 2 >= total:
@@ -346,6 +364,15 @@ MERGED_FOR_THE_ROW = "its merge is tied to the row"
 BRANCH_FOR_THE_ROW = "its branch is named for the row"
 
 
+def _said_by_a_merge(message):
+    """What a merge's message says of what it brings. `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and its subject says nothing about that work.
+    A list of what it brings, under `merge.log`, is git's and not anybody's word.
+    """
+    subject, _, body = message.partition("\n")
+    into = MERGE_INTO.match(subject)
+    return "\n".join([into.group(1) if into else subject] + [line for line in body.split("\n") if line and not line[0].isspace() and not line.startswith("* ")])
+
+
 def _inherited(reading, commits):
     """What a commit brings from around it. A merge someone tied to a row brings its branch along, since a pull request's title says what the commits inside it were
     for. A move in the table is not such a word: a merge of anything moves the table if anything inside it did, and CI's own merge is nobody's. A branch named for a row
@@ -356,13 +383,11 @@ def _inherited(reading, commits):
     for at, commit in enumerate(commits):
         if len(commit["parents"]) < 2:
             continue
-        if time.monotonic() > until:
+        if time.monotonic() >= until:
             reading.capped = True
             commits = commits[:at]
             break
-        into = MERGE_INTO.match(commit["message"])  # `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and its subject says nothing about that work
-        said = f"{into.group(1)}\n{commit['message'].partition(chr(10))[2]}" if into else commit["message"]
-        rows, _ = reading.direct_links({**commit, "message": said})
+        rows, _ = reading.direct_links({**commit, "message": _said_by_a_merge(commit["message"])})
         if rows:
             inside = gitio.git(reading.repo, "rev-list", f"{commit['parents'][0]}..{commit['sha']}")
             for sha in inside.out.split():
@@ -378,6 +403,27 @@ def _inherited(reading, commits):
     return commits, out
 
 
+def _versions(reading, top, commits):
+    """{commit: (object, bytes)} of the table as each of these held it, and None if git cannot say. Today's name first. Only if some do not hold it there is its other names'
+    walk taken, and each name is asked only of what the last did not find.
+    """
+    out, missing, names, at = {}, commits, [forecast._where(reading.plan)[1]], 0
+    until = time.monotonic() + reading.seconds_for_a_stage()
+    while missing and at < len(names):
+        if at and time.monotonic() >= until:
+            reading.names_cut = True
+            break
+        found = gitio.objects(top, [f"{commit}:{names[at]}" for commit in missing])
+        if found is None:
+            return None
+        out.update((commit, version) for commit, version in zip(missing, found) if version)
+        missing = [commit for commit, version in zip(missing, found) if not version]
+        at += 1
+        if missing and at == 1:
+            names = reading.table_names()
+    return out
+
+
 def _moves(reading, commits):
     """Which rows each commit moved or added, from its own change to the table, so that a commit says the same on its branch, inside a merge and after one. Git is asked, because
     a commit's list of files only holds what is under `repo`. Returns the commits this can answer for: past its bytes or its time, a commit and what is older are not judged,
@@ -386,30 +432,33 @@ def _moves(reading, commits):
     if not reading.same_repository:
         return commits
     asking = [c for c in commits if len(c["parents"]) == 1 and not all(reading._is_tracker(path) for path, _ in c["files"])]
-    top, each = forecast._where(reading.plan)[0], len(reading.table_paths)
-    found = gitio.objects(top, [f"{side}:{path}" for c in asking for side in (c["sha"], c["parents"][0]) for path in reading.table_paths])
-
-    def version(at):
-        return next(filter(None, found[at:at + each]), None)
+    top = forecast._where(reading.plan)[0]
+    versions = _versions(reading, top, list(dict.fromkeys(side for c in asking for side in (c["sha"], c["parents"][0]))))
+    if versions is None:
+        reading.capped = True
+        return []
     changed, sizes, room, stop = [], {}, gitio.MOST_BYTES_OF_HISTORY, None
-    for at, commit in enumerate(asking):
-        after, before = version(2 * at * each), version((2 * at + 1) * each)
-        if after and before and after != before:
-            room -= sum(size for name, size in {after, before} if name not in sizes)  # two commits in a row share a version, and it is read once
+    for commit in asking:
+        after, before = versions.get(commit["sha"]), versions.get(commit["parents"][0])
+        if reading.names_cut and not (after and before):
+            stop = commit
+            break
+        if after and after != before:  # with nothing before it, the table came back, and with it what it holds
+            room -= sum(size for name, size in filter(None, {after, before}) if name not in sizes)  # two commits in a row share a version, and it is read once
             if room < 0:
                 stop = commit
                 break
-            sizes.update((after, before))
-            changed.append((commit, after[0], before[0]))
+            sizes.update(filter(None, (after, before)))
+            changed.append((commit, after[0], before and before[0]))
     texts = dict(zip(sizes, gitio.blobs(top, list(sizes))))
-    kinds, until = {}, time.monotonic() + reading.seconds_for_a_stage()
+    kinds, until = {None: ({}, False)}, time.monotonic() + reading.seconds_for_a_stage()
 
     def kinds_of(name):
         if name not in kinds:
             kinds[name] = forecast._kinds(reading.plan, texts[name])
         return kinds[name]
     for commit, after, before in changed:
-        if time.monotonic() > until or texts[after] is None or texts[before] is None:
+        if time.monotonic() >= until or texts[after] is None or (before and texts[before] is None):
             stop = commit
             break
         then, (now, troubled) = kinds_of(before)[0], kinds_of(after)
@@ -425,7 +474,9 @@ def _moves(reading, commits):
 def _judged(reading, spec, stdin_text=None):
     commits = read_commits(reading.repo, *spec, stdin_text=stdin_text, budget=reading)
     if reading.read_from and reading.same_repository:  # what came before the table's history could be read, it cannot answer for
-        commits = [c for c in commits if c["date"] >= reading.read_from]
+        kept = [c for c in commits if c["date"] >= reading.read_from]
+        reading.capped = reading.capped or len(kept) < len(commits)
+        commits = kept
     commits = _moves(reading, commits)
     commits, inherited = _inherited(reading, commits)
     out = []
@@ -436,7 +487,7 @@ def _judged(reading, spec, stdin_text=None):
             continue
         kind, rows, because = reading.judge(commit, inherited.get(commit["sha"]))
         work = [(path, lines) for path, lines in commit["files"] if not reading._is_tracker(path) and not reading._is_upkeep(path)]
-        out.append({"commit": commit["sha"][:7], "date": commit["date"], "subject": commit["message"].split("\n", 1)[0], "class": kind, "rows": sorted(rows),
+        out.append({"commit": commit["sha"][:7], "date": commit["date"], "subject": commit["message"].split("\n", 1)[0][:LONGEST_SUBJECT], "class": kind, "rows": sorted(rows),
                     "because": because, "lines": commit["lines"], "area": _area(work or commit["files"])})
     return out
 
@@ -445,17 +496,18 @@ def _in_the_window(reading, start, today):
     """The commits written since the window opened and since the table began: nothing could have been on a plan that did not exist yet. Chosen by the dates a
     commit keeps, as `eta` chooses them: `git log --since` goes by the committer's date and stops at the first old one, so one commit could hide the rest.
     """
-    limit = []
+    limit, began = [], None
     since = start.isoformat()
     if reading.same_repository:
-        if reading.first_table is None:
+        began = _began(reading.plan, reading.life())
+        if began is None:
             return []
-        limit = ["--not", reading.first_table]
+        limit = ["--not", began[0]]
     elif reading.born:
         since = max(since, reading.born)
     if gitio.git(reading.repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
         return []
-    listed = gitio.git(reading.repo, "log", "--format=%H %as", f"--max-count={MOST_COMMITS_LISTED}", "HEAD", *limit, timeout=reading.seconds_for_a_stage())
+    listed = gitio.git(reading.repo, "log", "--format=%H %as", f"--max-count={MOST_COMMITS_LISTED}", "HEAD", *limit, timeout=reading.seconds_left())
     if listed.code == 124:
         reading.capped = True
         lines = listed.partial.splitlines()[:-1]
@@ -463,25 +515,32 @@ def _in_the_window(reading, start, today):
         raise PlanError(f"focus: git could not list the commits: {listed.err.strip()[:200]}")
     else:
         lines = listed.out.splitlines()
-    out, latest = [], today.isoformat()
-    for line in lines:
-        sha, _, date = line.partition(" ")
-        if min(date, latest) >= since:
-            out.append(sha)
+    latest = today.isoformat()
+    chosen = [(sha, date) for sha, _, date in (line.partition(" ") for line in lines) if min(date, latest) >= since]
     if len(lines) >= MOST_COMMITS_LISTED and min(lines[-1].partition(" ")[2], latest) >= since:  # the list ended before the window did
         reading.capped = True
-    return out
+    return [sha for sha, _ in written_since(reading.repo, began, chosen)] if began else [sha for sha, _ in chosen]
 
 
-def _table_life(plan):
-    """Every commit that changed the table, in all this history and on whichever branch it began, the first of them last."""
+def _began(plan, life=None):
+    """(commit, day) of the table's first commit in all this history, on whichever branch it began, and None if it has none. A table that arrived in a merge has none of
+    its own: no diff shows a merge unless asked, and that is the merge on this branch's main line that first holds it.
+    """
     top, rel = forecast._where(plan)
-    return history.table_commits(top, rel, topological=True)
+    life = history.table_commits(top, rel, topological=True) if life is None else life
+    if life and gitio.git(top, "cat-file", "-e", f"{life[-1][0]}^:{life[-1][2]}").code:  # it was not there before this commit
+        return life[-1][:2]
+    first = min(life[-1:] + history.table_commits(top, rel, first_parent=True)[-1:], key=lambda commit: commit[1], default=None)
+    return first[:2] if first else None
 
 
-def _first_table_commit(plan):
-    life = _table_life(plan)
-    return life[-1][0] if life else None
+def written_since(repo, began, commits):
+    """Those of these (commit, day) that came after the table began: on from its first commit, whatever their dates, or on another line and written since that day. Nothing
+    could have been on a plan that did not exist yet, and a line of work merged later did not start then.
+    """
+    first, day = began
+    after = set(gitio.git(repo, "rev-list", "--ancestry-path", f"{first}..HEAD", timeout=60).out.split()) if any(date < day for _, date in commits) else ()
+    return [(sha, date) for sha, date in commits if date >= day or sha in after]
 
 
 
@@ -611,8 +670,8 @@ def last_line(plan):
     head = gitio.git(reading.repo, "rev-parse", "--short=7", "HEAD").out.strip()
     if not judged or judged[0]["class"] != OFF or not judged[0]["commit"].startswith(head[:7]):  # in a subfolder, the newest commit that touched it may be an old one
         return None
-    first = reading.first_table
-    if first is None or first.startswith(head[:7]):  # nothing could have been on a plan that did not exist yet
+    first = _began(plan, reading.life())
+    if first is None or first[0].startswith(head[:7]):  # nothing could have been on a plan that did not exist yet
         return None
     following = render.opener_data(plan, reading.table)["next"]
     next_words = f" Next on the plan: {following['id']} ({following['name']})." if following else ""

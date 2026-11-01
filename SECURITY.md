@@ -35,7 +35,7 @@ A plan and a table can arrive with a clone or a pull request, so they are treate
 - **A stranger's words cannot talk to your terminal or to a workflow.** An escape sequence or a carriage return from a table or a plan is shown, not obeyed, in what the gate prints, in its
   errors, and in anything else at a terminal. A pipe gets the bytes the table holds. Only `gitdone ci` speaks to a workflow's runner: a plan's words that reach the start of a line anywhere else cannot. `install-ci` refuses a branch name that could shape the workflow.
 - **A few bytes cannot ask for much.** Ranges in a plan and rows counted with no table have limits across the whole file, and the regular expressions the engine reads a stranger's words with
-  run in linear time. A plan's file patterns, the ranges in a commit's message, a commit's list of files, and the text of a table's old versions, however little they weigh in the pack, have limits too, and `focus` has about ten seconds: what it could not read by then, it says it did not read.
+  run in linear time. A plan's file patterns, a commit's message, the ranges in it, its list of files and what is shown of its subject, and the text of a table's old versions, however little they weigh in the pack, have limits too, and `focus` has about ten seconds: what it could not read by then, it says it did not read.
 
 What is left is yours to know: a plan's `evidence_pattern` is a regular expression, so a hostile one can be slow, and `verdict_state` names a file the
 engine opens to read as JSON. The local gate trusts `.git`: someone who can edit it can make git say other things, which a clone in CI is out of reach of. Running `check`

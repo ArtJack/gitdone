@@ -17,10 +17,9 @@ ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
-TABLE_RULE = re.compile(r"^\s*\|(?:\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$")
-ID_HEADING = re.compile(r"^(?:[\w _-]+[ _-])?(?:id|ref|reference|key|code|req|no|number|#)\.?$", re.I)
-WORDS_HEADING = re.compile(r"^(?:[\w _-]+[ _-])?(?:title|name|requirement|description|summary|story|feature|capability|what|text)$", re.I)
-SAID = re.compile(r"\w+|[^\w\s.,;:!?\"'’‘“”«»…()\[\]{}/\\*`~–—-]")  # the words, and a mark that changes what is asked: `< 10 MB` is not `> 10 MB`, and `C` is not `C++`
+ID_HEADINGS = frozenset("id identifier reqid req # no number".split())  # the last word of a table's heading, as in `Req ID`
+WORDS_HEADINGS = frozenset("title name requirement description summary story feature capability what text".split())
+SAID = re.compile(r"\w+|(?<=\w)[+#]+|(?<!\w)[-+−](?=\d)|!=|[<>=≠≤≥]+|[%$€£¥]")  # the words, and a mark that changes what is asked: `< 10 MB`, `C++`, `-1`. Everything else is punctuation, in any script
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 ID_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){ID}(?![0-9A-Za-z-])")
 NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
@@ -31,7 +30,7 @@ class Item:
         self.ident, self.words, self.source, self.line = ident, words, source, line
         self.near = None
         self.is_section = False
-        self.in_table = False
+        self.mention = False  # an id alone in a table's cell, where it may only refer to a requirement
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -50,26 +49,36 @@ def _cells(line):
 
 
 def _columns(heading):
-    """(the columns that hold ids, the column that holds their words), by what a table's heading calls them."""
-    names = [cell.strip("*_` ") for cell in _cells(heading)]
-    return [at for at, name in enumerate(names) if ID_HEADING.match(name)], next((at for at, name in enumerate(names) if WORDS_HEADING.match(name)), None)
+    """(the columns that hold ids, those that hold their words), by the last word of what a table's heading calls them."""
+    lasts = [next(filter(None, reversed(re.split(r"[\s_.-]+", cell.strip("*_`: ").lower()))), "") for cell in _cells(heading)]
+    return [at for at, last in enumerate(lasts) if last in ID_HEADINGS], [at for at, last in enumerate(lasts) if last in WORDS_HEADINGS]
 
 
 def _table_item(line, index, source, columns):
-    """A row of a table. Its id is in the first column, or in one its heading says holds ids: anywhere else an id refers to a requirement, or is prose about one. Its words
-    follow the id in its cell, or are in the column the heading says holds them, or the next cell along, or the one before.
+    """A row of a table, and its id wherever it is: a requirement lost is a gap nobody sees, and one too many is a line somebody reads. A column whose heading says it holds
+    ids comes first, then the first column, and any other cell only with the id alone or with its colon, so that prose about one is prose. Its words follow the id in its cell,
+    or are in a column the heading says holds them, or the next cell along, or the one before.
     """
     cells = _cells(line)
-    with_ids, with_words = columns or ([], None)
-    for at in [1] + with_ids:
+    with_ids, with_words = columns or ([], [])
+    for at in with_ids + [at for at in range(1, len(cells)) if at not in with_ids]:
         found = ITEM_ID.match(cells[at]) if at < len(cells) else None
-        if found and not found.group(1) and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
-            named = cells[with_words] if with_words not in (None, at) and with_words < len(cells) else ""
-            words = found.group(7) or named or next((c for c in cells[at + 1:] if c), "") or next((c for c in reversed(cells[:at]) if c), "")
-            item = Item(found.group(3), _clean_words(words), source, index + 1)
-            item.in_table = True
-            return item
+        if not found or found.group(1) or found.group(3).split("-")[0] in NOT_REQUIREMENTS:
+            continue
+        sure = at == 1 or at in with_ids
+        if not sure and found.group(7) and ":" not in (found.group(4), found.group(6)):
+            continue
+        named = next((cells[w] for w in with_words if w != at and w < len(cells) and cells[w]), "")
+        words = found.group(7) or named or next((c for c in cells[at + 1:] if c), "") or next((c for c in reversed(cells[:at]) if c), "")
+        item = Item(found.group(3), _clean_words(words), source, index + 1)
+        item.mention = not sure
+        return item
     return None
+
+
+def outranks(item, held):
+    """Whether this says more of a requirement than what was read first: words where it had none, or a definition where it had a cell that may only have referred to it."""
+    return bool(item.words) and (not held.words or (held.mention and not item.mention))
 
 
 def _item(line, index, source, columns=None):
@@ -131,7 +140,7 @@ def lines_with_columns(text, problems=None):
     """(index, line, what the heading of the table it stands in says of its columns), for what a reader of the file takes as its words."""
     columns, before = None, ""
     for index, line in lines_to_read(text, problems):
-        if len(line) <= LONGEST_LINE and TABLE_RULE.match(line) and before.lstrip().startswith("|"):
+        if "-" in line and not line.strip("|-: \t") and before.lstrip().startswith("|"):  # the rule under a table's heading
             columns = _columns(before)
         elif not line.lstrip().startswith("|"):
             columns = None
@@ -195,7 +204,7 @@ def read(plan):
             if key not in seen:
                 seen[key] = len(items)
                 items.append(item)
-            elif items[seen[key]].in_table and not item.in_table:  # what a table says of an id may only refer to it, and this defines it
+            elif outranks(item, items[seen[key]]):
                 items[seen[key]] = item
     if len(items) > MOST_ITEMS:
         problems.append(f"requirements: {len(items)} of them, and only the first {MOST_ITEMS} were read")
@@ -207,7 +216,10 @@ def _said(words):
     """The words themselves, in their order, with capitals and punctuation aside. `Add SMS login` and `Remove SMS login`, `step 1` and `step 2`, are two requirements, whatever else they share.
     The commit a checklist item names is what it says of itself, not what it asks for.
     """
-    return " ".join(SAID.findall(evidence.NAMED_EVIDENCE.sub("", words).lower()))
+    text = evidence.NAMED_EVIDENCE.sub("", words).lower()
+    for arrow in ("->", "=>", "<-"):
+        text = text.replace(arrow, " ")
+    return " ".join(SAID.findall(text))
 
 
 class _Rows:
