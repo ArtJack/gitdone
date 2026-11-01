@@ -49,7 +49,7 @@ A **Partial** row has a note a reader can see: a comment, `&nbsp;` or `<br>` is 
 ## A claim can stop holding
 
 A row is checked again on every run, so a claim can go bad after it was accepted. A commit whose revert is on the default branch is a contradiction:
-`commit 660d81a was reverted on main by dd6d68b`. That covers:
+`commit 660d81a was reverted on main by 3f6610b`. That covers:
 
 - `git revert`, with or without `--reference`, and a revert of a merge, which reverts what the merge brought in too;
 - GitHub's revert button (`Reverts owner/repo#30`), for a row citing the pull request or the commit that landed it;

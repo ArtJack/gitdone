@@ -29,6 +29,19 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",m
 .say{fill:#8b93a1}.cmd{fill:#f0f2f5}.prompt{fill:#6cb6ff}.bad{fill:#ff7b72}.good{fill:#56d364}.title{fill:#8b93a1;font-size:12px}
 .mark{fill:#14161a}
 """
+# The engine stamps a row with today, the stamp goes in a commit, and so in the id of every commit after it. So the session has a calendar of its own.
+CALENDAR = """import datetime, os, runpy
+
+
+class Fixed(datetime.date):
+    @classmethod
+    def today(cls):
+        return cls.fromisoformat(os.environ["DEMO_TODAY"])
+
+
+datetime.date = Fixed
+runpy.run_module("gitdone", run_name="__main__", alter_sys=True)
+"""
 
 
 def identity(date):
@@ -44,15 +57,17 @@ class Session:
         self.repo.mkdir()
         tools = pathlib.Path(folder) / "tools"
         tools.mkdir()
+        calendar = tools / "calendar.py"
+        calendar.write_text(CALENDAR, encoding="utf-8")
         shim = tools / "gitdone"
-        shim.write_text(f'#!/bin/sh\nPYTHONPATH="{ROOT}" exec "{sys.executable}" -m gitdone "$@"\n', encoding="utf-8")
+        shim.write_text(f'#!/bin/sh\nPYTHONPATH="{ROOT}" exec "{sys.executable}" "{calendar}" "$@"\n', encoding="utf-8")
         shim.chmod(0o755)
         self.env = {**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "HOME": str(folder)}
         self.env.pop("PYTHONPATH", None)
         self.date = "2026-03-01"
 
     def shell(self, command):
-        env = {**self.env, **identity(self.date)}
+        env = {**self.env, **identity(self.date), "DEMO_TODAY": self.date}
         done = subprocess.run(["sh", "-c", command], cwd=str(self.repo), env=env, capture_output=True, text=True, encoding="utf-8")
         return (done.stdout + done.stderr).rstrip("\n").split("\n") if (done.stdout + done.stderr).strip() else []
 
