@@ -1,9 +1,11 @@
 """What a plan's requirement files ask for, and which of it has a row. A row nobody asked for and a requirement nobody tracked both make the
 percent say less than it seems to, so both are said. Read from Markdown: `REQ-12: words` in a list, a heading or a table, or a checklist item.
 """
+import collections
 import os
 import re
 import shlex
+import unicodedata
 
 from . import evidence, focus, render
 from .plan import symlink_in
@@ -17,9 +19,12 @@ ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
-ID_HEADINGS = frozenset("id identifier reqid req # no number".split())  # the last word of a table's heading, as in `Req ID`
-WORDS_HEADINGS = frozenset("title name requirement description summary story feature capability what text".split())
-SAID = re.compile(r"\w+|(?<=\w)[+#]+|(?<!\w)[-+−](?=\d)|!=|[<>=≠≤≥]+|[%$€£¥]")  # the words, and a mark that changes what is asked: `< 10 MB`, `C++`, `-1`. Everything else is punctuation, in any script
+# What a table's heading says of a column, by its last word, as in `Req ID`. An id elsewhere in a table is a ticket, a severity or a standard, or refers to a requirement.
+ID_HEADINGS = frozenset("id identifier reqid req requirement story feature ref reference key code item # no number".split())
+WORDS_HEADINGS = ("requirement", "title", "description", "summary", "statement", "want", "text", "capability", "story", "feature", "name", "what")  # the first of these that a table has
+ASIDE_HEADINGS = frozenset("risk test covers case scenario milestone quarter sprint release version date term severity sev priority pri status owner assignee author bug defect incident result type effort estimate phase".split())
+Columns = collections.namedtuple("Columns", "ids words aside")
+SAID = re.compile(r"\w+|(?<=\w)[+#＋＃]+|(?<!\w)[-+−](?=\d)|!=|[<>=≠≤≥＜＞＝]+|[%％$]")  # the words, and a mark that changes what is asked: `< 10 MB`, `C++`, `-1`. Everything else is punctuation, in any script
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 ID_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){ID}(?![0-9A-Za-z-])")
 NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
@@ -30,7 +35,9 @@ class Item:
         self.ident, self.words, self.source, self.line = ident, words, source, line
         self.near = None
         self.is_section = False
-        self.mention = False  # an id alone in a table's cell, where it may only refer to a requirement
+        self.weak = False  # its words were a guess at the table's next cell, or it has none, so that a line defining it says more
+        self.passed_over = False  # an id in a column that does not say it holds them, which is not a requirement and is said
+        self.also = []  # other ids in its cell
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -49,36 +56,60 @@ def _cells(line):
 
 
 def _columns(heading):
-    """(the columns that hold ids, those that hold their words), by the last word of what a table's heading calls them."""
+    """What a table's heading says of its columns: those that hold ids, those that hold their words, the best first, and those that hold neither."""
     lasts = [next(filter(None, reversed(re.split(r"[\s_.-]+", cell.strip("*_`: ").lower()))), "") for cell in _cells(heading)]
-    return [at for at, last in enumerate(lasts) if last in ID_HEADINGS], [at for at, last in enumerate(lasts) if last in WORDS_HEADINGS]
+    return Columns([at for at, last in enumerate(lasts) if last in ID_HEADINGS],
+                   sorted((at for at, last in enumerate(lasts) if last in WORDS_HEADINGS), key=lambda at: WORDS_HEADINGS.index(lasts[at])),
+                   {at for at, last in enumerate(lasts) if last in ASIDE_HEADINGS})
+
+
+def _cell_id(cell):
+    """The match of an id at the start of a cell, a link to it read as the id."""
+    if cell.startswith("[") and "](" in cell and ")" in cell:
+        cell = cell[1:cell.index("](")] + cell[cell.index(")", cell.index("](")) + 1:]
+    found = ITEM_ID.match(cell)
+    return found if found and not found.group(1) and found.group(3).split("-")[0] not in NOT_REQUIREMENTS else None
 
 
 def _table_item(line, index, source, columns):
-    """A row of a table, and its id wherever it is: a requirement lost is a gap nobody sees, and one too many is a line somebody reads. A column whose heading says it holds
-    ids comes first, then the first column, and any other cell only with the id alone or with its colon, so that prose about one is prose. Its words follow the id in its cell,
-    or are in a column the heading says holds them, or the next cell along, or the one before.
+    """A row of a table. Its id is in a column the heading says holds them, or at the start of the first column unless the heading says that holds something else, or in any
+    cell with its colon and its words. An id anywhere else is a ticket, a severity or a standard, or refers to a requirement: it is passed over, and `matrix` says so, because
+    neither a requirement lost nor one invented should go unseen. Its words follow the id in its cell, or are in a column the heading says holds them. Failing that they are a
+    guess at the next cell along or the one before, which anything that defines the id outranks.
     """
     cells = _cells(line)
-    with_ids, with_words = columns or ([], [])
-    for at in with_ids + [at for at in range(1, len(cells)) if at not in with_ids]:
-        found = ITEM_ID.match(cells[at]) if at < len(cells) else None
-        if not found or found.group(1) or found.group(3).split("-")[0] in NOT_REQUIREMENTS:
+    ids, words, aside = columns or ((), (), ())
+    sure = list(ids) + ([1] if 1 not in aside else [])
+    passed = None
+    for at in sure + [at for at in range(1, len(cells)) if at not in sure]:
+        found = _cell_id(cells[at]) if at < len(cells) else None
+        if not found:
             continue
-        sure = at == 1 or at in with_ids
-        if not sure and found.group(7) and ":" not in (found.group(4), found.group(6)):
+        own = found.group(7)
+        also = ID_IN_TEXT.findall(own)
+        if also and not ID_IN_TEXT.sub("", own).strip(" ,;/&+"):
+            own = ""
+        else:
+            also = []
+        if at not in sure and not (own and ":" in (found.group(4), found.group(6))):
+            passed = passed or found.group(3)
             continue
-        named = next((cells[w] for w in with_words if w != at and w < len(cells) and cells[w]), "")
-        words = found.group(7) or named or next((c for c in cells[at + 1:] if c), "") or next((c for c in reversed(cells[:at]) if c), "")
-        item = Item(found.group(3), _clean_words(words), source, index + 1)
-        item.mention = not sure
+        named = next((cells[w] for w in words if w != at and w < len(cells) and cells[w]), "")
+        order = list(range(at + 1, len(cells))) + list(range(at - 1, 0, -1))
+        near = next((cells[n] for n in order if n not in aside and any(c.isalpha() for c in cells[n]) and not ID_IN_TEXT.fullmatch(cells[n])), "")
+        item = Item(found.group(3), _clean_words(own or named or near), source, index + 1)
+        item.weak, item.also = not (own or named), also
+        return item
+    if passed:
+        item = Item(passed, "", source, index + 1)
+        item.passed_over = True
         return item
     return None
 
 
 def outranks(item, held):
-    """Whether this says more of a requirement than what was read first: words where it had none, or a definition where it had a cell that may only have referred to it."""
-    return bool(item.words) and (not held.words or (held.mention and not item.mention))
+    """Whether this says more of a requirement than what was read first: words where it had none, or words of its own where those were a guess."""
+    return bool(item.words) and (not held.words or (held.weak and not item.weak))
 
 
 def _item(line, index, source, columns=None):
@@ -140,15 +171,17 @@ def lines_with_columns(text, problems=None):
     """(index, line, what the heading of the table it stands in says of its columns), for what a reader of the file takes as its words."""
     columns, before = None, ""
     for index, line in lines_to_read(text, problems):
-        if "-" in line and not line.strip("|-: \t") and before.lstrip().startswith("|"):  # the rule under a table's heading
-            columns = _columns(before)
-        elif not line.lstrip().startswith("|"):
+        if "-" in line and "|" in line and "|" in before and not line.strip("|-: \t"):  # the rule under a table's heading
+            columns = _columns(before if before.lstrip().startswith("|") else f"| {before}")
+        elif "|" not in line:
             columns = None
+        elif columns is not None and not line.lstrip().startswith("|"):  # a table may leave off its outer pipes
+            line = f"| {line}"
         before = line if len(line) <= LONGEST_LINE else ""
         yield index, line, columns
 
 
-def parse(text, source, problems=None):
+def parse(text, source, problems=None, passed_over=None):
     """The requirements in one Markdown file, as a reader of it would see them: an item nested in a list counts, and code indented under one does not. A heading with an id
     is a requirement, unless what stands under it is a plain checklist: then it is that list's section.
     """
@@ -170,8 +203,12 @@ def parse(text, source, problems=None):
             heading = item
         elif item and heading:
             heading.is_section, heading = not item.ident, None
-        if item:
+        if item and item.passed_over:
+            if passed_over is not None:
+                passed_over.append(item)
+        elif item:
             out.append(item)
+            out.extend(Item(other, item.words, source, index + 1) for other in item.also)
     if problems is not None:
         problems.extend(f"requirements: {source}: {words}" for words in trouble)
         if too_long:
@@ -180,8 +217,8 @@ def parse(text, source, problems=None):
 
 
 def read(plan):
-    """(items, problems). A plan can come from a clone, and these words can reach a pull request's comment, so only files of this project are read."""
-    items, problems, seen = [], [], {}
+    """(items, problems, ids passed over that nothing else defines). A plan can come from a clone, and these words can reach a pull request's comment, so only files of this project are read."""
+    items, problems, seen, passed_over = [], [], {}, []
     root = plan.root()
     for name in plan.requirements[:MOST_FILES]:
         said = render.one_line(name)
@@ -193,7 +230,7 @@ def read(plan):
             if symlink_in(plan.dir, os.path.expanduser(name)):
                 problems.append(f"requirements: {said} is a symbolic link, or sits behind one, so it was not read")
                 continue
-            found = parse(plan.text_of(path, "the requirements file"), said, problems)
+            found = parse(plan.text_of(path, "the requirements file"), said, problems, passed_over)
         except Exception as err:  # a name no system can open, or a file that cannot be read: said, and nothing stops
             problems.append(render.one_line(f"requirements: {said} could not be read: {err}"))
             continue
@@ -209,17 +246,25 @@ def read(plan):
     if len(items) > MOST_ITEMS:
         problems.append(f"requirements: {len(items)} of them, and only the first {MOST_ITEMS} were read")
         del items[MOST_ITEMS:]
-    return items, problems
+    return items, problems, [item for item in passed_over if item.ident not in seen]
+
+
+def _marks_kept(text):
+    """`\\w` leaves out what combines with a letter, and in Indic scripts and Thai that can be the vowel: मेल and माल are two words. Nor does it know a currency."""
+    def kept(char):
+        kind = unicodedata.category(char)
+        return f"_{ord(char):x}_" if kind[0] == "M" else (f" _{ord(char):x}_ " if kind == "Sc" and char != "$" else char)
+    return "".join(kept(char) for char in text)
 
 
 def _said(words):
     """The words themselves, in their order, with capitals and punctuation aside. `Add SMS login` and `Remove SMS login`, `step 1` and `step 2`, are two requirements, whatever else they share.
     The commit a checklist item names is what it says of itself, not what it asks for.
     """
-    text = evidence.NAMED_EVIDENCE.sub("", words).lower()
+    text = evidence.NAMED_EVIDENCE.sub(lambda named: named.group(0) if named.group(0).strip(" ()`").isdigit() else "", words).lower()  # a commit, and not a number someone asked for
     for arrow in ("->", "=>", "<-"):
         text = text.replace(arrow, " ")
-    return " ".join(SAID.findall(text))
+    return " ".join(SAID.findall(text if text.isascii() else _marks_kept(unicodedata.normalize("NFC", text))))
 
 
 class _Rows:
@@ -257,7 +302,7 @@ class _Rows:
 
 def coverage(plan, table):
     """{items: [(item, rows)], without: [items], unasked: [rows], problems}. Empty when the plan names no requirement file. An item with no row has `near`, the row it looks like."""
-    items, problems = read(plan)
+    items, problems, passed_over = read(plan)
     rows = [r for d in table.domains for r in d.rows if not r.prose]
     index = _Rows(rows)
     pairs = [(item, index.for_item(item)) for item in items]
@@ -265,7 +310,7 @@ def coverage(plan, table):
     for item, mine in pairs:
         item.near = index.looks_like(item) if not mine else None
     return {"items": pairs, "without": [item for item, mine in pairs if not mine],
-            "unasked": [r for r in rows if r.num not in answered] if items else [], "problems": problems}
+            "unasked": [r for r in rows if r.num not in answered] if items else [], "problems": problems, "passed_over": passed_over}
 
 
 def what_to_do(item):

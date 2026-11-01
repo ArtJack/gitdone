@@ -81,7 +81,7 @@
         "type": "object",
         "required": ["id"],
         "properties": {
-          "id": {"type": "string"},
+          "id": {"type": ["string", "integer"]},
           "name": {"type": "string"},
           "rows": {"$ref": "#/definitions/numbers"},
           "state": {"type": "string"},
@@ -89,7 +89,7 @@
         }
       }
     },
-    "order": {"type": "array", "items": {"type": "string"}, "description": "Workstream ids. Default: their order in the list."},
+    "order": {"type": "array", "items": {"type": ["string", "integer"]}, "description": "Workstream ids. Default: their order in the list."},
     "sections": {
       "type": "array",
       "description": "What the view shows after its header, in order.",

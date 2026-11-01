@@ -98,7 +98,7 @@ def sections_from_rows(names):
 def _requirement_in(line, columns=None):
     from . import requirements
     found = requirements._item(line, 0, "", columns)
-    return found if found and found.ident else None
+    return found if found and found.ident and not found.passed_over else None
 
 
 def sections_from_checklist(text):
