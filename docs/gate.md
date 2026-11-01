@@ -35,6 +35,7 @@ root on a forge the engine has no name for, which reads as a site.
   the one on the default branch.
 - **It was not reverted,** below.
 - **It changes something.** An empty commit, or one that only changes the tracker's own files, is no evidence. A merge is held to what it changed against its first parent.
+- **It does more than take work out.** A commit whose subject says `Revert "X"` is no evidence, so a claim cannot be mended by citing its own revert. `Revert "Revert "X""` and `Reapply "X"` put the work back, and count. If taking something out is what a row asks for, cite a commit that does more than the revert.
 - **Its content arrived.** A commit that came in from the side is no evidence if the merge that landed it took none of its changes, as `git merge -s ours` does. Its files
   being there with those very bytes counts, whoever brought them, as with a hotfix cherry-picked and merged back.
 

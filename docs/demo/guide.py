@@ -36,15 +36,16 @@ def produce(folder):
         lines.clear()
 
     run('gitdone init --rows "Sign-in, Search, Export, Reports" --hook', keep=lambda line: line.startswith(("wrote", "All:")))
-    run("git add -A && git commit -q -m 'Track the scope'", keep=lambda line: line.startswith("result"))
+    run("git add .gitdone.json status-table.md STATUS.md && git commit -q -m 'Track the scope'", keep=lambda line: line.startswith("result"))
     close("begin")
     run("gitdone")
     close("open")
     s.date = "2026-03-03"
-    s.shell("echo code > signin.py && git add signin.py")
-    run("git commit -q -m 'row 1: sign-in'")
+    s.shell("echo code > signin.py && echo code > search.py")
+    run("git add signin.py && git commit -q -m 'row 1: sign-in'")
     landed = s.shell("git rev-parse --short HEAD")[0]
-    s.shell("git switch -q -c search && echo code > search.py && git add search.py && git commit -q -m 'row 2: search by title' && git switch -q main")
+    run("git switch -q -c search && git add search.py && git commit -q -m 'row 2: search by title'")
+    run("git switch -q main")
     close("work")
     run(f"gitdone shipped 1 {landed}")
     run("gitdone mark 2 built --branch search")

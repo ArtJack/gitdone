@@ -612,6 +612,7 @@ def cmd_badge(args):
         shipped.write_badge(plan, tables.load_clean(plan))
         print(f"{_short(plan.badge)} is now written with the view, and held to the table by the gate.")
         print(f"In your README: [![status]({name})]({_short(plan.out)})")
+        print(f"to commit: git add {_short(plan.path)} {_short(plan.badge)}")
         return 0
     table = tables.load_clean(plan)
     if args.svg:

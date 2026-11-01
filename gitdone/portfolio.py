@@ -66,7 +66,7 @@ def markdown(entries, today=None):
             L.append(f"| {e['project']} {gap}|  | cannot run: {first} |")
             continue
         following = f"{e['next']} {e['next_name']}".strip() if e["next"] else ""
-        gate_words = {"pass": "pass", "warnings": f"pass, {e['missing']} missing", "fail": f"**fail**, {e['contradicted']} contradicted"}.get(e["gate"], e["gate"])
+        gate_words = {"pass": "pass", "warnings": f"pass, {e['missing']} missing", "fail": f"**fail**, {e['contradicted']} contradicted" if e["contradicted"] else "**fail**: `gitdone check` says why"}.get(e["gate"], e["gate"])
         L.append(f"| {e['project']}{' (all groups)' if e['all_groups'] else ''} | {e['rows']} | {e['strict_rows']} ({render.pct(e['strict'])}) | {render.pct(e['weighted'])} | "
                  f"`{render.bar(e['weighted'], 10)}` | " + (f"{render.one_line(e.get('likely_words') or e['likely'] or '')} | " if dated else "") + f"{following} | {gate_words} |")
     if not entries:

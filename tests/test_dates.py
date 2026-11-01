@@ -4,7 +4,7 @@ import json
 import os
 import unittest
 
-from helpers import ProjectCase, git
+from helpers import ProjectCase, commit, git
 
 from gitdone import chart, ci, doctor, gate, portfolio, render, requirements, scaffold, table as tables
 
@@ -318,6 +318,7 @@ class TheChartCommandDrawsIt(ProjectCase):
 
     def test_a_comma_in_a_name_stays_one_cell(self):
         self.assertEqual(chart._csv_cell('a, "b"'), '"a, ""b"""')
+        self.assertEqual(chart._csv_cell("a\nb"), '"a\nb"')
 
     def test_two_pictures_at_once_is_refused(self):
         code, _, err = self.cli("chart", "--scale", "--burndown")
@@ -366,6 +367,120 @@ class WordsThatWrap(unittest.TestCase):
     def test_a_new_tracker_gets_the_whole_of_it(self):
         sections = scaffold.sections_from_checklist(f"# Spec\n\n- REQ-1: {self.LONG}\n  delivery dates\n")
         self.assertEqual(sections[0].rows[0][0], f"{self.LONG} delivery dates")
+
+
+class ARevertIsNoEvidence(ProjectCase):
+    """A row whose commit was reverted must not be mended by citing the revert: that is the claim saying its own opposite."""
+
+    def setUp(self):
+        super().setUp()
+        self.feature = commit(self.app, "feature.txt", "x\n", "row 2: the feature")
+        self.undo = self.reverted(self.feature)
+        self.change_plan(rows_total=None)
+
+    def reverted(self, sha):
+        git(self.app, "revert", "--no-edit", sha)
+        return git(self.app, "rev-parse", "HEAD")
+
+    def test_shipped_refuses_it_and_changes_nothing(self):
+        before = self.table_path.read_text()
+        code, _, err = self.cli("shipped", "9", self.undo[:7])
+        self.assertEqual(code, 1, err)
+        self.assertIn("is a revert", err)
+        self.assertEqual(self.table_path.read_text(), before)
+
+    def test_the_strict_gate_fails_a_row_typed_with_it(self):
+        self.set_row(9, "Live", f"`{self.undo[:7]}`")
+        code, out, _ = self.cli("check", "--strict", "--offline")
+        self.assertEqual(code, 3, out)
+        self.assertIn("is a revert", out)
+
+    def test_a_revert_of_the_revert_puts_it_back(self):
+        again = self.reverted(self.undo)
+        code, out, err = self.cli("shipped", "9", again[:7])
+        self.assertEqual(code, 0, err)
+        self.assertIn("is on main", out)
+
+    def test_git_reapply_puts_it_back(self):
+        git(self.app, "revert", "--no-edit", self.undo)
+        git(self.app, "commit", "-q", "--amend", "-m", f'Reapply "row 2: the feature"\n\nThis reverts commit {self.undo}.\n')
+        code, out, err = self.cli("shipped", "9", git(self.app, "rev-parse", "HEAD")[:7])
+        self.assertEqual(code, 0, err)
+        self.assertIn("is on main", out)
+
+    def test_a_revert_of_the_reapply_takes_it_out_again(self):
+        again = self.reverted(self.undo)
+        gone = self.reverted(again)
+        code, _, err = self.cli("shipped", "9", gone[:7])
+        self.assertEqual(code, 1, err)
+        self.assertIn("is a revert", err)
+
+    def test_github_s_button_is_a_revert_too(self):
+        (self.app / "b.txt").write_text("x\n")
+        git(self.app, "add", "b.txt")
+        git(self.app, "commit", "-q", "-m", "Add b (#30)")
+        (self.app / "b.txt").unlink()
+        git(self.app, "add", "b.txt")
+        git(self.app, "commit", "-q", "-m", 'Revert "Add b" (#31)\n\nReverts someone/kiosk#30')
+        code, _, err = self.cli("shipped", "9", git(self.app, "rev-parse", "HEAD")[:7])
+        self.assertEqual(code, 1, err)
+        self.assertIn("is a revert", err)
+
+    def test_a_squash_that_quotes_a_revert_did_other_work(self):
+        (self.app / "c.txt").write_text("x\n")
+        git(self.app, "add", "c.txt")
+        git(self.app, "commit", "-q", "-m", f'More of the feature (#9)\n\n* Revert "row 2: the feature"\n\n    This reverts commit {self.feature}.\n')
+        code, out, err = self.cli("shipped", "9", git(self.app, "rev-parse", "HEAD")[:7])
+        self.assertEqual(code, 0, err)
+        self.assertIn("is on main", out)
+
+    def test_a_subject_that_only_says_revert_is_a_subject(self):
+        sha = commit(self.app, "d.txt", "x\n", 'Revert "the old idea" in the docs')
+        code, out, err = self.cli("shipped", "9", sha[:7])
+        self.assertEqual(code, 0, err)
+        self.assertIn("is on main", out)
+
+
+class ShippingHead(ProjectCase):
+    def test_head_is_the_commit_just_made(self):
+        sha = commit(self.app, "e.txt", "x\n", "row 9: done")
+        code, out, err = self.cli("shipped", "9", "HEAD")
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"commit {sha[:7]} is on main", out)
+        self.assertIn(f"`{sha[:7]}`", self.table_path.read_text())
+
+    def test_head_on_a_branch_is_refused_like_any_id(self):
+        git(self.app, "switch", "-q", "stray")
+        self.addCleanup(git, self.app, "switch", "-q", "main")
+        code, _, err = self.cli("shipped", "9", "HEAD")
+        self.assertEqual(code, 1, err)
+        self.assertIn("is not on main", err)
+
+    def test_in_no_repository_it_names_no_release(self):
+        self.change_plan(repo="../nowhere")
+        code, _, err = self.cli("shipped", "9", "HEAD")
+        self.assertNotEqual(code, 0)
+        self.assertTrue(err)
+
+
+class WhatEachCommandLeavesToCommit(ProjectCase):
+    def test_keeping_a_badge_says_what_to_commit(self):
+        self.change_plan(badge=None)
+        code, out, err = self.cli("badge", "--keep", "kept-badge.svg")
+        self.assertEqual(code, 0, err)
+        self.assertRegex(out, r"to commit: git add \S*plan\.json \S*kept-badge\.svg")
+
+
+class APortfolioThatFailsSaysWhy(unittest.TestCase):
+    ENTRY = {"project": "p", "rows": 3, "strict_rows": 1, "strict": 1 / 3, "weighted": 1 / 3, "likely": None, "likely_words": "", "all_groups": False, "next": None, "next_name": None, "gate": "fail", "missing": 0}
+
+    def test_a_contradiction_is_counted(self):
+        self.assertIn("**fail**, 2 contradicted", portfolio.markdown([{**self.ENTRY, "contradicted": 2}]))
+
+    def test_anything_else_does_not_read_as_nothing(self):
+        page = portfolio.markdown([{**self.ENTRY, "contradicted": 0}])
+        self.assertNotIn("0 contradicted", page)
+        self.assertIn("`gitdone check` says why", page)
 
 
 class SmallWords(ProjectCase):

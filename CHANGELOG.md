@@ -23,6 +23,8 @@ A signal that cannot stop anything. `next` lists the rows to work on now. `insta
 
 **What it still gets wrong, knowingly.** A table with an `ID` or `Requirement` column is read as requirements even if it holds test cases. A section is set aside only by its exact English heading, so `## Риски` is not. All-work pace counts Partial and Built marks and rows citing a pull request, after the first day. A set-aside row that reopens counts against the pace. A status table and view moved to another folder leave their old commits reading as on plan until they pass out of the window. In a monorepo, a folder that moved starts again where it moved to.
 
+**Also.** A commit that only reverts another is no evidence for Live, so a reverted claim cannot be repaired by citing its own revert. `shipped <row> HEAD` takes the commit you just made, and is judged like any other id. `badge --keep` says what to commit.
+
 **Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. A `deadline` is the plan's word and the view states it, so setting one takes a render, as any edit to what the view shows does. The burn-up and the view carry no forecast.
 
 ## 0.2.0 (2026-10-31)

@@ -88,6 +88,9 @@ def ship(plan, row_number, words, offline=False, today=None, allow_unverified=Fa
     words = " ".join(words.split()) if words else ""
     if not words:
         raise Refused("no evidence given. Usage: shipped <row> <evidence>")
+    if words == "HEAD" and not plan.evidence_pattern:  # what a person means just after a commit. The rules below judge it like any other id
+        head = gitio.git(plan.repo or plan.dir, "rev-parse", "--short", "HEAD")
+        words = head.out.strip() if head.code == 0 else words
     if re.fullmatch(r"[0-9a-fA-F]{7,64}", words):
         words = f"`{words.lower()}`"
     words = words.replace("|", "\\|")

@@ -233,7 +233,7 @@ def scale_csv(rows):
 
 
 def _csv_cell(words):
-    return '"' + words.replace('"', '""') + '"' if any(c in words for c in ',"') else words
+    return '"' + words.replace('"', '""') + '"' if any(c in words for c in ',"\r\n') else words
 
 
 def _scale_bar(y, height, share, color):

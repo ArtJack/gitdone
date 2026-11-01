@@ -32,7 +32,7 @@ The gap between them is work that exists and has not shipped. Strict 25% with we
 
 <img src="https://raw.githubusercontent.com/ArtJack/gitdone/v0.3.0/docs/img/bramble-scale.svg" width="760" alt="A scale for a fictional project: all rows at 25 percent strict and 46 percent weighted, and one bar for each of its five domains.">
 
-That is `gitdone chart --scale --out scale.svg`, for Bramble Kiosk, a [fictional sample](https://github.com/ArtJack/gitdone/blob/v0.3.0/examples/bramble/STATUS.md) partway through its work. Here is the same state everywhere you would meet it.
+That is `gitdone chart --scale --out scale.svg`, for Bramble Kiosk, a fictional library kiosk partway through its work, whose history [`docs/demo/make_history.py`](https://github.com/ArtJack/gitdone/blob/v0.3.0/docs/demo/make_history.py) generates. Here is the same state everywhere you would meet it.
 
 **When you open the project.** Plain `gitdone`, with what comes next and where the recent commits went:
 
@@ -140,7 +140,7 @@ A hook lives in `.git/hooks`, in this clone only: delete `pre-commit`, `pre-merg
 
 ## Instruction
 
-One project from nothing to a number you can defend. Run these in your repository, on your own rows. Every block is real output, and a test keeps it so.
+One project from nothing to a number you can defend. Run these in your repository, on your own rows. Every block is real output, trimmed where it runs long, and a test keeps it so.
 
 ### 1. Write down what done means
 
@@ -152,14 +152,14 @@ $ gitdone init --rows "Sign-in, Search, Export, Reports" --hook
 wrote .gitdone.json, status-table.md (4 rows) and STATUS.md
 All: strict 0% (0/4), weighted 0% · next: row 1 (Sign-in)
 
-$ git add -A && git commit -q -m 'Track the scope'
+$ git add .gitdone.json status-table.md STATUS.md && git commit -q -m 'Track the scope'
 result: PASS
 ```
 <!-- guide-begin:end -->
 
 `--hook` guards the commits after this one, in this clone. `--ci` adds the Action, `--agents` the agents' rules, and `--badge` a badge.
 
-Instead of `--rows`, start from a file's checklist or spec with `--from-checklist TODO.md`, or from GitHub issues with `--from-issues`. A checklist's checked items are Live only if what they name holds, and the rest start as Partial with the reason beside them, so the first number you see is already true.
+Instead of `--rows`, start from a file's checklist or spec with `--from-checklist TODO.md`, or from GitHub issues with `--from-issues`. A checked item is Live only if what it names holds, and otherwise starts as Partial with the reason beside it, and an unchecked one starts as Not built, so the first number you see is already true.
 
 ### 2. Open the project with `gitdone`
 
@@ -177,11 +177,15 @@ It says where things stand and what comes next. `gitdone next` lists the rows to
 
 <!-- guide-work:start -->
 ```console
-$ git commit -q -m 'row 1: sign-in'
+$ git add signin.py && git commit -q -m 'row 1: sign-in'
+
+$ git switch -q -c search && git add search.py && git commit -q -m 'row 2: search by title'
+
+$ git switch -q main
 ```
 <!-- guide-work:end -->
 
-That is how `gitdone focus` knows where the work went. Nothing else depends on it.
+The second commit is on a branch, for the next step. Naming the row is how `gitdone focus` knows where the work went, and nothing else depends on it.
 
 ### 4. Move a row when the work moves
 
@@ -204,16 +208,16 @@ to commit: git add status-table.md STATUS.md
 ```
 <!-- guide-move:end -->
 
-Only these move the numbers, and each one is held to its rule. Git is asked, and `shipped` refuses a commit that is not on the default branch.
+Only these move the numbers, and each one is held to its rule. Git is asked, and `shipped` refuses a commit that is not on the default branch, or one that only reverts another.
 
 | The work is | Command | Strict | Weighted |
 |---|---|---|---|
-| On the default branch | `gitdone shipped 3 <commit>`, or `"PR #12"`, `"MR !12"`, `"tag v1.2"` | Counts | 1.0 |
+| On the default branch | `gitdone shipped 3 <commit>`, or `HEAD`, `'PR #12'`, `'MR !12'`, `'tag v1.2'` | Counts | 1.0 |
 | Finished on a branch that exists | `gitdone mark 3 built --branch NAME` | No | 0.8 |
 | Partly there | `gitdone mark 3 partial "what exists"` | No | 0.4 |
 | Not there after all | `gitdone mark 3 "not built"` | No | 0 |
 
-The weights are yours to change in `.gitdone.json`, and so are the kinds. With a remote, `shipped` wants the commit pushed.
+The weights are yours to change in `.gitdone.json`, and so are the kinds. With a remote, `shipped` wants the commit pushed, and `mark --branch` wants the branch pushed.
 
 ### 5. Change the scope out loud
 
@@ -242,7 +246,7 @@ result: PASS
 ```
 <!-- guide-commit:end -->
 
-The gate runs here, and it stays out of any commit that does not touch the tracker.
+The gate runs here, and it stays out of any commit that does not touch the tracker. Each command's `to commit:` line names the files, including a badge if you keep one.
 
 ### 7. Read it back
 
@@ -385,8 +389,8 @@ Measured from the code, and [`SECURITY.md`](https://github.com/ArtJack/gitdone/b
 | Dependencies | None: Python 3.9 or newer and its standard library |
 | Processes it starts | `git`. `gh` or `glab`, only for a row that names a pull request or merge request, and never with `--offline` |
 | Files it writes | The table, the view and the badge (`shipped`, `mark`, `add`, `remove`, `render --write`), what `init` creates, the workflow (`install-ci`), what you pass to `--out`. Reading commands write nothing |
-| Git hooks | Only with `install-hook` or `init --hook`. In `.git/hooks`, never committed, and it refuses to replace a hook it did not write. `post-commit` only ever says a line, and `--no-focus` leaves it out |
-| Network | None of its own |
+| Git hooks | Only with `install-hook` or `init --hook`. In `.git/hooks`, never committed, and it refuses to replace a hook it did not write. `post-commit` only ever says a line, and `--no-focus` leaves it out. With no engine left on the machine, a commit that touches the tracker falls back on `uvx gitdone`, which fetches the latest release |
+| Network | None of its own, apart from that fallback |
 | Telemetry, model calls | None |
 | Claude Code plugin | One SessionStart hook that prints a line and can never stop a session, two skills, no agent |
 
@@ -396,7 +400,7 @@ Measured from the code, and [`SECURITY.md`](https://github.com/ArtJack/gitdone/b
 |---|---|
 | `gitdone` | Where the project stands, on the scale, what is next, and whether the gate holds. Also `status`, `opener` |
 | `init` | Start a tracker: `--rows`, `--from-checklist FILE`, `--from-issues [LABEL]`, `--hook`, `--ci`, `--agents`, `--badge` |
-| `shipped <row> <evidence>` | Move a row to Live, or refuse. Evidence is a commit id, `PR #12`, `MR !12` or `tag v1.2`. `--allow-unverified` takes a claim nothing here could ever check, and the note says so |
+| `shipped <row> <evidence>` | Move a row to Live, or refuse. Evidence is a commit id, `HEAD`, `PR #12`, `MR !12` or `tag v1.2`, quoted in a shell. `--allow-unverified` takes a claim nothing here could ever check, and the note says so |
 | `mark <row> <kind> [note]` | Move a row short of Live, held to that kind's rule. `--branch NAME` |
 | `add <name>`, `remove <row>` | Change the scope and keep the counts true. `--domain`, `--new-domain`, `--kind`, `--note` |
 | `rows` | List rows. `--open`, `--kind`, `--domain` |

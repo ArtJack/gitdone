@@ -810,8 +810,26 @@ class Verifier:
     def _as_git_compares(self, name):
         return name.lower() if self._ignores_case else name
 
+    def _only_takes_out(self, full):
+        """`Revert "X"` takes X out. `Revert "Revert "X""` and `Reapply "X"` put it back. A squash that quotes a revert in its body did other work too, so only the subject counts."""
+        self._revert_log()
+        if full not in self._every_revert:
+            return False
+        subject, out = gitio.git(self.repo, "log", "-1", "--format=%s", full).out.strip(), False
+        words = REVERT_SUBJECT.match(subject)
+        while words:
+            out = not out if words.group(1) == "Revert" else out
+            words = REVERT_SUBJECT.match(words.group(2))
+        return out
+
+    def _no_evidence(self, full, label):
+        """Why a commit on the branch cannot be what a claim rests on, or None."""
+        if self._only_takes_out(full):
+            return f"{label} is a revert: it takes work out, so a Live row cannot rest on it"
+        return self._hollow_reason(full, label)
+
     def _hollow_reason(self, full, label):
-        """Why a commit on the branch is still no evidence, or None."""
+        """Why a commit on the branch has nothing in it to rest on, or None."""
         if full not in self._changes:
             self._read_changes([full])
         files = self._changes.get(full, ([], ["?"]))[1]
@@ -843,7 +861,7 @@ class Verifier:
         undone = self.undone_by(full)
         if undone:
             return Result(CONTRADICTED, f"{label} was reverted on {self.branch} by {undone[:7]}")
-        hollow = self._hollow_reason(full, label)
+        hollow = self._no_evidence(full, label)
         if hollow:
             return Result(UNPROVEN, hollow)
         if self._unpushed:
@@ -957,7 +975,7 @@ class Verifier:
         undone = self.undone_by(full)
         if undone:
             return Result(CONTRADICTED, f"{label} was reverted on {self.branch} by {undone[:7]}")
-        hollow = self._hollow_reason(full, f"{label}'s commit {full[:7]}")  # on a rebase merge, the forge names only the last of them
+        hollow = self._no_evidence(full, f"{label}'s commit {full[:7]}")  # on a rebase merge, the forge names only the last of them
         if hollow:
             return Result(UNPROVEN, f"{hollow}; if the work is in another commit of it, cite that commit instead of the pull request")
         if self._unpushed:
