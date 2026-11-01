@@ -74,7 +74,7 @@ others, at weights you can read and argue with in the plan.
 >
 > | # | Name | Evidence |
 > |---|---|---|
-> | 1 | Sign-in | *(Live 2026-10-31: `660d81a`; was Not built)* |
+> | 1 | Sign-in | *(Live 2026-03-04: `660d81a`; was Not built)* |
 >
 > ---
 >
@@ -108,7 +108,7 @@ result: FAIL in --strict, evidence is missing or partly disproved
 
 # Later, sign-in is reverted on main. The claim stops holding.
 $ gitdone check
-FAIL row 1 (Live): commit 660d81a was reverted on main by 3321f15
+FAIL row 1 (Live): commit 660d81a was reverted on main by 3f6610b
   what is true now? gitdone mark 1 <kind> <words>, or shipped 1 <the new commit>
 result: FAIL, 1 contradicted or inconsistent
 

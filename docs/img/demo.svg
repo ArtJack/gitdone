@@ -64,7 +64,7 @@ text,.mark,.screen{animation-duration:35.11s;animation-iteration-count:infinite;
 <text x="16" y="447" style="animation-name:a21"><tspan class="say"># Later, sign-in is reverted on main. The claim stops holding.</tspan></text>
 <text x="16" y="466" style="animation-name:a22"><tspan class="prompt">$ </tspan><tspan class="cmd">gitdone check</tspan></text>
 <rect class="mark" x="32" y="452" width="149" height="19" style="animation-name:m22;animation-timing-function:steps(13)"/>
-<text x="16" y="485" style="animation-name:a23"><tspan class="bad">FAIL row 1 (Live): commit 660d81a was reverted on main by 3321f15</tspan></text>
+<text x="16" y="485" style="animation-name:a23"><tspan class="bad">FAIL row 1 (Live): commit 660d81a was reverted on main by 3f6610b</tspan></text>
 <text x="16" y="504" style="animation-name:a24">  what is true now? gitdone mark 1 &lt;kind&gt; &lt;words&gt;, or shipped 1 &lt;the new commit&gt;</text>
 <text x="16" y="523" style="animation-name:a25"><tspan class="bad">result: FAIL, 1 contradicted or inconsistent</tspan></text>
 <text x="16" y="561" style="animation-name:a27"><tspan class="say"># Your agent says it shipped. Git decides.</tspan></text>
