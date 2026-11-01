@@ -193,17 +193,23 @@ class TheInstruction(unittest.TestCase):
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
         with tempfile.TemporaryDirectory() as folder:
-            cls.block = cls.module.produce(folder)
+            cls.steps = cls.module.produce(folder)
 
-    def test_the_readme_block_is_that_session(self):
-        found = README[README.index(self.module.START) + len(self.module.START):README.index(self.module.END)].strip()
-        self.assertEqual(found, self.block)
+    def test_each_block_in_the_readme_is_that_session(self):
+        for name, block in self.steps.items():
+            start, end = f"<!-- {name}:start -->", f"<!-- {name}:end -->"
+            self.assertEqual(README[README.index(start) + len(start):README.index(end)].strip(), block, name)
+
+    def test_the_steps_are_in_the_order_they_ran(self):
+        places = [README.index(f"<!-- {name}:start -->") for name in self.steps]
+        self.assertEqual(places, sorted(places))
 
     def test_every_step_did_what_it_says(self):
+        said = "\n".join(self.steps.values())
         for words in ("result: PASS", "is on main", "Built, not live", "Not built → Partial", "added row 5", "out of the scope", "strict ████░░░░░░░░░░░░  25%"):
-            self.assertIn(words, self.block)
-        self.assertNotIn("FAIL", self.block)
-        self.assertNotIn("refused", self.block)
+            self.assertIn(words, said)
+        self.assertNotIn("FAIL", said)
+        self.assertNotIn("refused", said)
 
 
 class ThePageOnPyPI(unittest.TestCase):

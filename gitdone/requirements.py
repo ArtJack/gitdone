@@ -19,6 +19,8 @@ ITEM_ID = re.compile(r"^\s*(#{1,6}\s+(?:\d{1,9}(?:\.\d{1,9})*\.?\s+)?|[-*+]\s+(?
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
+WRAP_WIDTH, FINISHED = 60, ".!?:;)"
+LABELLED = re.compile(r"^\s*[\w-]+:\s")
 # What a table's heading says of a column, by its last word, as in `Req ID`. An id elsewhere in a table is a ticket, a severity or a standard, or refers to a requirement.
 ID_HEADINGS = frozenset("id identifier reqid req requirement story feature ref reference item # no number".split())
 WORDS_HEADINGS = ("requirement", "requirements", "title", "description", "summary", "statement", "want", "text", "capability", "story", "feature", "name", "what")  # the first of these that a table has
@@ -208,10 +210,35 @@ def lines_to_read(text, problems=None):
             problems.append(f"line {comment_line + 1} opens an HTML comment that never closes, so nothing after it is read")
 
 
+def _ran_out_of_room(line):
+    """A short line, or one that ends a sentence, said what it had to say: what stands under it is a note."""
+    return len(line) >= WRAP_WIDTH and line.rstrip()[-1:] not in FINISHED
+
+
+def _with_wrapped_words(lines):
+    """A list item's words can wrap onto the indented lines right under it, and they are still its words. A line that could be an item of its own, or that labels itself, stays apart."""
+    held, last, tail = None, None, ""
+    for index, line in lines:
+        wraps = (held is not None and index == last + 1 and line[:1].isspace() and "|" not in line and _ran_out_of_room(tail)
+                 and not (LIST_MARK.match(line) or HEADING.match(line) or ITEM_ID.match(line) or LABELLED.match(line)))
+        if wraps and len(held[1]) + len(line) <= LONGEST_LINE:
+            held, last, tail = (held[0], f"{held[1]} {line.strip()}"), index, line
+            continue
+        if held:
+            yield held
+            held = None
+        if LIST_MARK.match(line) and "|" not in line and len(line) <= LONGEST_LINE:
+            held, last, tail = (index, line), index, line
+        else:
+            yield index, line
+    if held:
+        yield held
+
+
 def lines_with_columns(text, problems=None):
     """(index, line, what the heading of the table it stands in says of its columns), for what a reader of the file takes as its words."""
     columns, before = None, ""
-    for index, line in lines_to_read(text, problems):
+    for index, line in _with_wrapped_words(lines_to_read(text, problems)):
         if "-" in line and "|" in line and "|" in before and not line.strip("|-: \t"):  # the rule under a table's heading
             columns = _columns(before if before.lstrip().startswith("|") else f"| {before}")
         elif "|" not in line:

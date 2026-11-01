@@ -235,7 +235,7 @@ def update_readme(path, lines):
     """Replace what sits between the markers, so that the README cannot drift from what the engine printed and wrote."""
     readme = pathlib.Path(path)
     text = readme.read_text(encoding="utf-8")
-    demo = "<!-- demo:start -->\n```console\n" + console_block(lines) + "\n```\n<!-- demo:end -->"
+    demo = "<!-- demo:start -->\n```text\n" + console_block(lines) + "\n```\n<!-- demo:end -->"
     text = re.sub(r"<!-- demo:start -->.*?<!-- demo:end -->", lambda _: demo, text, flags=re.S)
     view = "<!-- view:start -->\n" + view_block(lines.view) + "\n<!-- view:end -->"
     text = re.sub(r"<!-- view:start -->.*?<!-- view:end -->", lambda _: view, text, flags=re.S)

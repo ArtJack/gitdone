@@ -138,33 +138,58 @@ A hook lives in `.git/hooks`, in this clone only: delete `pre-commit`, `pre-merg
 
 ## Instruction
 
-One project from nothing to a number you can defend. Run these in your repository, on your own rows. Every line here is real output, and a test keeps it so:
+One project from nothing to a number you can defend. Run these in your repository, on your own rows. Every block is real output, and a test keeps it so.
 
-<!-- guide:start -->
+### 1. Write down what done means
+
+Rows are capabilities a stranger could check, like `Sign-in`, not tasks like `refactor auth`.
+
+<!-- guide-begin:start -->
 ```console
-# Say what must exist, and commit it. The hook guards the next commit on.
 $ gitdone init --rows "Sign-in, Search, Export, Reports" --hook
 wrote .gitdone.json, status-table.md (4 rows) and STATUS.md
 All: strict 0% (0/4), weighted 0% · next: row 1 (Sign-in)
 
 $ git add -A && git commit -q -m 'Track the scope'
 result: PASS
+```
+<!-- guide-begin:end -->
 
-# Open the project: where it stands, and what comes next.
+`--hook` guards the commits after this one, in this clone. `--ci` adds the Action, `--agents` the agents' rules, and `--badge` a badge.
+
+Instead of `--rows`, start from a file's checklist or spec with `--from-checklist TODO.md`, or from GitHub issues with `--from-issues`. A checklist's checked items are Live only if what they name holds, and the rest start as Partial with the reason beside them, so the first number you see is already true.
+
+### 2. Open the project with `gitdone`
+
+<!-- guide-open:start -->
+```console
 $ gitdone
 All: strict 0% (0/4), weighted 0% · next: row 1 (Sign-in)
   All  strict ░░░░░░░░░░░░░░░░   0%  weighted ░░░░░░░░░░░░░░░░   0%
+```
+<!-- guide-open:end -->
 
-# Work, and name the row in the commit message.
+It says where things stand and what comes next. `gitdone next` lists the rows to work on now, and `gitdone rows --open` lists everything left.
+
+### 3. Work, and name the row in the commit message
+
+<!-- guide-work:start -->
+```console
 $ git commit -q -m 'row 1: sign-in'
+```
+<!-- guide-work:end -->
 
-# It is on main, so the row can say so. Git is asked, and it agrees.
+That is how `gitdone focus` knows where the work went. Nothing else depends on it.
+
+### 4. Move a row when the work moves
+
+<!-- guide-move:start -->
+```console
 $ gitdone shipped 1 b942cf2
 row 1: Not built → Live (verified: commit b942cf2 is on main)
 All: strict 25% (1/4), weighted 25% · next: row 2 (Search)
 to commit: git add status-table.md STATUS.md
 
-# Work short of main counts too, in the weighted number only.
 $ gitdone mark 2 built --branch search
 row 2: Not built → Built, not live
 All: strict 25% (1/4), weighted 45% · next: row 2 (Search)
@@ -174,8 +199,24 @@ $ gitdone mark 3 partial "CSV works, PDF does not yet"
 row 3: Not built → Partial
 All: strict 25% (1/4), weighted 55% · next: row 2 (Search)
 to commit: git add status-table.md STATUS.md
+```
+<!-- guide-move:end -->
 
-# A change of scope is a decision, and the percent says what it cost.
+Only these move the numbers, and each one is held to its rule. Git is asked, and `shipped` refuses a commit that is not on the default branch.
+
+| The work is | Command | Strict | Weighted |
+|---|---|---|---|
+| On the default branch | `gitdone shipped 3 <commit>`, or `"PR #12"`, `"MR !12"`, `"tag v1.2"` | Counts | 1.0 |
+| Finished on a branch that exists | `gitdone mark 3 built --branch NAME` | No | 0.8 |
+| Partly there | `gitdone mark 3 partial "what exists"` | No | 0.4 |
+| Not there after all | `gitdone mark 3 "not built"` | No | 0 |
+
+The weights are yours to change in `.gitdone.json`, and so are the kinds. With a remote, `shipped` wants the commit pushed.
+
+### 5. Change the scope out loud
+
+<!-- guide-scope:start -->
+```console
 $ gitdone add "Password reset"
 added row 5
 All: strict 20% (1/5), weighted 44% · next: row 2 (Search)
@@ -185,12 +226,26 @@ $ gitdone remove 4
 row 4 (Reports) is out of the scope; `week` will say so
 All: strict 25% (1/4), weighted 55% · next: row 2 (Search)
 to commit: git add status-table.md STATUS.md
+```
+<!-- guide-scope:end -->
 
-# Commit what moved. The gate runs here.
-$ git add status-table.md STATUS.md && git commit -q -m 'Sign-in is live; scope: password reset in, reports out'
+Adding a row lowers the percent, and that is the point: the cost of a feature is on the table when someone decides to take it. Rows and domains can also be edited by hand in `status-table.md`, followed by `gitdone render --write`.
+
+### 6. Commit the table and the view together
+
+<!-- guide-commit:start -->
+```console
+$ git add status-table.md STATUS.md && git commit -q -m 'Sign-in is live'
 result: PASS
+```
+<!-- guide-commit:end -->
 
-# The scale now, and what moved since the start.
+The gate runs here, and it stays out of any commit that does not touch the tracker.
+
+### 7. Read it back
+
+<!-- guide-read:start -->
+```console
 $ gitdone
 All: strict 25% (1/4), weighted 55% · next: row 2 (Search)
   All  strict ████░░░░░░░░░░░░  25%  weighted █████████░░░░░░░  55%
@@ -198,34 +253,20 @@ All: strict 25% (1/4), weighted 55% · next: row 2 (Search)
 $ gitdone week "1 month"
 No commit of the table before 1 month ago; since its first commit (d72f82a, 2026-03-02): All strict 0→1 of 4 (0%→25%), weighted 0%→55%. Moved: 1 Not built→Live; 2 Not built→Built, not live; 3 Not built→Partial. 1 rows are new since then. Removed: 4 (was Not built). Focus: 1 of 1 commits on plan, 0 unclear, 0 upkeep, 0 off plan.
 ```
-<!-- guide:end -->
+<!-- guide-read:end -->
 
-What each step asks of you:
+`gitdone focus` says where the commits went. `gitdone chart`, `gitdone report` and `gitdone portfolio` are [above](#the-scale-how-far-along-is-it). `gitdone doctor` checks the whole setup on one screen.
 
-1. **Write down what done means.** Rows are capabilities a stranger could check, like `Sign-in`, not tasks like `refactor auth`. Start from a list (`--rows "Sign-in, Search"`), a file's checklist or spec (`--from-checklist TODO.md`), or GitHub issues (`--from-issues`). A checklist's checked items are Live only if what they name holds, and the rest start as Partial with the reason beside them, so the first number you see is already true. Add `--ci` for the Action and `--agents` for the agents' rules. Commit the files it wrote.
-2. **Open the project with `gitdone`.** It says where things stand and what comes next. `gitdone next` lists the rows to work on now, and `gitdone rows --open` lists everything left.
-3. **Name the row in the commit message:** `row 3: export to CSV`. That is how `gitdone focus` knows where the work went. Nothing else depends on it.
-4. **Move a row when the work moves.** Only these move the numbers, and each one is held to its rule:
+### 8. When the gate says no, believe it
 
-   | The work is | Command | Strict | Weighted |
-   |---|---|---|---|
-   | On the default branch | `gitdone shipped 3 <commit>`, or `"PR #12"`, `"MR !12"`, `"tag v1.2"` | Counts | 1.0 |
-   | Finished on a branch that exists | `gitdone mark 3 built --branch NAME` | No | 0.8 |
-   | Partly there | `gitdone mark 3 partial "what exists"` | No | 0.4 |
-   | Not there after all | `gitdone mark 3 "not built"` | No | 0 |
-
-   The weights are yours to change in `.gitdone.json`, and so are the kinds. With a remote, `shipped` wants the commit pushed.
-5. **Change the scope out loud.** `gitdone add "Password reset"` and `gitdone remove 4` keep the counts true, and the percent moves in front of whoever decided. Rows and domains can also be edited by hand in `status-table.md`, then `gitdone render --write`.
-6. **Commit the table and the view together:** `git add status-table.md STATUS.md`. The hook runs the gate here and stays out of any commit that does not touch the tracker.
-7. **When the gate says no, believe it.** It names the row and what to do. A reverted commit fails until someone says what is true now, with `gitdone mark` or `gitdone shipped` on the new commit. [The rules](docs/gate.md).
-8. **Read it back.** `gitdone week` says what moved since a date. `gitdone focus` says where the commits went. `gitdone chart`, `gitdone report` and `gitdone portfolio` are above. `gitdone doctor` checks the whole setup on one screen.
+It names the row and what to do. A reverted commit fails until someone says what is true now, with `gitdone mark`, or with `gitdone shipped` on the new commit. [The rules](docs/gate.md).
 
 Going further: [the status table](docs/status-table.md), [the plan file](docs/plan-file.md), and groups, workstreams and asks in [a full example](examples/bramble/STATUS.md).
 
 ## What the gate does
 
 <!-- demo:start -->
-```console
+```text
 # Four things must exist for this to be done.
 $ gitdone init --rows "Sign-in, Search, Export, Reports" --hook
 wrote .gitdone.json, status-table.md (4 rows) and STATUS.md
@@ -436,7 +477,9 @@ the code it measures.
 ## This repository tracks itself
 
 [`STATUS.md`](STATUS.md) is this project's own view, under its own gate, with this roadmap as its scope. The rows that are Live name the commits that
-made them so. Its burn-up, published by [the Action](docs/ci.md) on every push:
+made them so. Its scale and its burn-up, published by [the Action](docs/ci.md) on every push:
+
+<img src="https://raw.githubusercontent.com/ArtJack/gitdone/status-badges/scale.svg" width="640" alt="This repository's own scale: how far along each part of it is.">
 
 <img src="https://raw.githubusercontent.com/ArtJack/gitdone/status-badges/burnup.svg" width="640" alt="This repository's own burn-up chart, from its status table's git history.">
 

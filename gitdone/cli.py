@@ -445,7 +445,7 @@ def cmd_init(args):
         if wanted:
             try:  # the tracker is written, and the summary below is still what the person needs
                 for written in step():
-                    print("installed", written)
+                    print("installed", _short(written))
             except PlanError as err:
                 print(f"gitdone: {err}", file=sys.stderr)
                 code = gate.CANNOT_RUN
@@ -668,7 +668,7 @@ def cmd_install_hook(args):
     from . import install
     plan = _plan(args)
     for hook in install.install(plan, strict=not args.lenient, focus=not args.no_focus):
-        print("installed", hook)
+        print("installed", _short(hook))
     theirs = None if args.no_focus else install.someones_post_commit(plan)
     if theirs:
         print(f"left {theirs} alone, so a commit off plan will not be said. To have it said, add `gitdone focus --last` to that hook")

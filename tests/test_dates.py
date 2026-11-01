@@ -1,11 +1,12 @@
 """The date stays off every screen until a plan or a person asks for it, and the scale is there from the first command."""
 import datetime
 import json
+import os
 import unittest
 
 from helpers import ProjectCase, git
 
-from gitdone import chart, ci, doctor, gate, portfolio, render, scaffold, table as tables
+from gitdone import chart, ci, doctor, gate, portfolio, render, requirements, scaffold, table as tables
 
 
 class Moving(ProjectCase):
@@ -324,6 +325,49 @@ class TheChartCommandDrawsIt(ProjectCase):
         self.assertIn("ask for one", err)
 
 
+class WordsThatWrap(unittest.TestCase):
+    LONG = "Extract the shipper name, the consignee, every commodity and the pickup &"
+
+    def said(self, text):
+        return [(item.ident, item.words) for item in requirements.parse(text, "")]
+
+    def test_a_wrapped_requirement_keeps_all_its_words(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n  delivery dates, in that order\n"), [("REQ-1", f"{self.LONG} delivery dates, in that order")])
+
+    def test_more_than_one_line_of_them(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n  {self.LONG}\n  the end\n"), [("REQ-1", f"{self.LONG} {self.LONG} the end")])
+
+    def test_a_checklist_item_wraps_too_and_can_name_its_id_at_the_end(self):
+        self.assertEqual(self.said(f"- [ ] {self.LONG}\n  delivery (REQ-7)\n"), [("REQ-7", f"{self.LONG} delivery")])
+
+    def test_a_note_under_a_short_item_is_a_note(self):
+        self.assertEqual(self.said("- [x] Depop\n  fixture-backed nightly smoke completes\n"), [(None, "Depop")])
+
+    def test_a_note_under_a_finished_sentence_is_a_note(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG} done.\n  more about how it went\n"), [("REQ-1", f"{self.LONG} done.")])
+
+    def test_a_line_that_labels_itself_is_a_note(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n  Note: how it went\n"), [("REQ-1", self.LONG)])
+
+    def test_what_could_be_an_item_stays_one(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n  REQ-2: another\n  - REQ-3: and one more\n"), [("REQ-1", self.LONG), ("REQ-2", "another"), ("REQ-3", "and one more")])
+
+    def test_a_blank_line_or_a_fence_ends_it(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n\n  a paragraph under it\n"), [("REQ-1", self.LONG)])
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\n  ```\n  code\n  ```\n  after the code\n"), [("REQ-1", self.LONG)])
+
+    def test_a_line_at_the_margin_is_not_its_words(self):
+        self.assertEqual(self.said(f"- REQ-1: {self.LONG}\nA paragraph at the margin\n"), [("REQ-1", self.LONG)])
+
+    def test_it_stops_at_the_longest_line_it_reads(self):
+        found = self.said(f"- REQ-1: {self.LONG}\n" + "".join(f"  {'word ' * 300}\n" for _ in range(3)))
+        self.assertLessEqual(len(found[0][1]), requirements.LONGEST_LINE)
+
+    def test_a_new_tracker_gets_the_whole_of_it(self):
+        sections = scaffold.sections_from_checklist(f"# Spec\n\n- REQ-1: {self.LONG}\n  delivery dates\n")
+        self.assertEqual(sections[0].rows[0][0], f"{self.LONG} delivery dates")
+
+
 class SmallWords(ProjectCase):
     def test_doctor_counts_one_domain(self):
         lines = ["# P", "", "### 1. All (1)", "", "| # | Name | Status | Note |", "|---|---|---|---|", "| 1 | Row | Not built |  |", ""]
@@ -335,7 +379,19 @@ class SmallWords(ProjectCase):
         self.write_view()
         items, _ = doctor.run(self.plan_path, offline=True)
         table = next(item for item in items if item["name"] == "table")
-        self.assertIn("1 rows in 1 domain", table["detail"] if "detail" in table else str(table))
+        self.assertIn("1 rows in 1 domain", table["detail"])
+        self.assertNotIn("domains", table["detail"])
+
+    def test_init_says_where_a_hook_went_in_few_words(self):
+        target = self.tmp / "new"
+        target.mkdir()
+        git(target, "init", "-q", "-b", "main")
+        here = os.getcwd()
+        os.chdir(target)
+        self.addCleanup(os.chdir, here)
+        code, out, err = self.cli("init", "--rows", "A, B", "--hook", plan=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"installed {os.path.join('.git', 'hooks', 'pre-commit')}", out)
 
 
 if __name__ == "__main__":
