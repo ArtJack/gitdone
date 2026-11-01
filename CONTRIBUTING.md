@@ -5,8 +5,8 @@ reproduce.
 
 ## The short version
 
-- **Run the suite before and after.** `python3 -m unittest discover -s tests` needs nothing installed and takes under a
-  minute. It builds real git repositories, and `gh` is a stub.
+- **Run the suite before and after.** `python3 -m unittest discover -s tests` needs nothing installed and takes about five
+  minutes. It builds real git repositories, and `gh` is a stub.
 - **A rule needs a test that can fail.** Put the defect back and watch the test go red before you trust it.
 - **Python 3.9 is the floor, and the standard library is the whole dependency list.** A stock Mac has 3.9, and it is the
   machine this is installed on most. CI runs the floor and the newest.
@@ -14,6 +14,10 @@ reproduce.
   `ruff format` is not run.
 - **Versions move together.** `gitdone/__init__.py`, `.claude-plugin/plugin.json` and `server.json` carry one version.
   `tests/test_versions.py` refuses a commit where they disagree, and `release.yml` refuses a tag that disagrees with them.
+- **The README's samples are real output, and generated.** After a change to what a command prints, run
+  `python3 docs/demo/record.py docs/img/demo.svg --readme README.md`, `python3 docs/demo/timeline.py --write` and
+  `python3 docs/demo/guide.py --write`. PyPI's page is made from the README: `python3 docs/demo/pypi_readme.py --write`.
+  `tests/test_docs.py` refuses a stale copy.
 - **Every change gets a CHANGELOG entry:** what was wrong, what changed, what is deliberately not in it.
 - **The repository tracks itself.** `STATUS.md` is generated from `status-table.md` and `.gitdone.json`, under the
   same gate as everyone else's. A row moves with `gitdone shipped`, after the commit is on `main`.

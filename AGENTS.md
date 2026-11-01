@@ -24,5 +24,7 @@
 - The view is a pure function of the plan and the table. Anything that changes at any hour (a QA record, a forecast, a date beyond the
   header line) stays out of it, or the gate could not compare it byte for byte.
 - `eta`, `focus` and `matrix` are signals. Nothing in them changes an exit code of the gate.
+- The date is experimental: nothing but `eta`, `chart --burndown` and the MCP `eta` tool shows it unless a plan says `"dates": true`.
+- The README's samples and `README-pypi.md` are generated, and [`CONTRIBUTING.md`](CONTRIBUTING.md) names the commands.
 - A rule needs a test that can fail, and every change gets a CHANGELOG entry. A commit in a test touches more than one file, because the code that reads a commit does.
 - Before a release, run `GITDONE_ORACLE_SEEDS=400 python3 -m unittest discover -s tests -p test_oracle.py` and read what it lists. Contrived chains of reverts of one commit can be refused.
