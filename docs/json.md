@@ -71,8 +71,10 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
   "sure": "2026-04-29",
   "too_far": false,
   "largest_day_share": 0.31,
-  "short_of_live_share": 0.71,
+  "only_backwards": false,
   "last_change": null,
+  "plan_problems": [],
+  "all_groups": false,
   "scope": {"added": 5, "removed": 0, "keeps_growing": false, "per_day": 0.179, "never_catches_up": false},
   "live": {"kind": "Live", "left": 12, "moving_days": 3, "pace_per_day": 0.107, "likely": "2026-06-23", "sure": "2026-07-31", "too_far": false},
   "deadline": {"date": "2026-04-15", "start": "2026-01-12", "days_left": 43, "time_used": 0.54, "needs_per_day": 0.202, "needs_per_day_live": 0.279, "late_by": -1, "late_by_if_sure": 14, "late_by_live": 69},
@@ -80,11 +82,11 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 }
 ```
 
-`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone.
+`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone. `all_groups` says the plan has groups and this date covers all of them, while each percent is per group.
 
 ## `focus --json`
 
-`days`, `since`, `revisions`, `commits`, `on_plan`, `unclear`, `upkeep`, `off_plan`, `tracker_only`, `shallow`, `lines` (the same four, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `lines`), `next`, `next_row`, and
+`days`, `since`, `revisions`, `commits`, `on_plan`, `unclear`, `upkeep`, `off_plan`, `tracker_only`, `shallow`, `newest_only` (only part of the history was looked at), `plan_problems`, `lines` (the same four, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `lines`), `next`, and
 `list`: every commit with `commit`, `date`, `subject`, `class` (`on plan`, `unclear`, `upkeep`, `off plan`, `tracker`), `rows`, `because`, `lines`, `area`.
 
 ## The rest
@@ -95,6 +97,6 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.
 - **`doctor --json`:** `exit_code` and `items`, each with `state` (`ok`, `warn`, `fail`), `name`, `detail`.
-- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, in rows. `chart --csv` is the same as CSV. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives.
-- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `next`, `gate`, or `error`.
+- **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, in rows. `chart --csv` is the same as CSV. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives, and as CSV `date`, `scope`, `left_all_work`, `left_strict`.
+- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `all_groups`, `next`, `gate`, or `error`.
 - **`badge`:** prints the JSON a [shields.io endpoint](https://shields.io/badges/endpoint-badge) reads.

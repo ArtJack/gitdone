@@ -224,7 +224,7 @@ def badge_files(plan, table):
 def _append(env_name, text):
     path = os.environ.get(env_name)
     if path:
-        with open(path, "a", encoding="utf-8") as handle:
+        with open(path, "a", encoding="utf-8", errors="backslashreplace") as handle:
             handle.write(text)
 
 
@@ -305,5 +305,5 @@ def _publish_step(plan, table, branch):
     else:
         try:
             print(publish(plan.repo, branch, badge_files(plan, table), f"status: {badge.message(plan, table)}"))
-        except PlanError as err:
+        except Exception as err:
             print(f"::warning title=gitdone::could not publish: {_escape_data(err)}")

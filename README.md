@@ -165,7 +165,7 @@ Off plan or unclear, newest first:
 
 Next on the plan: S1 (Reading lists and renewals). It needs the head librarian's word at release.
 Off plan is not wrong, only unplanned. If it belongs, `gitdone add "<what it is>"` puts it in the scope, and the date moves.
-To tie a commit to a row, name the row in its message: row 3.
+To tie a commit to a row, name the row in its message: `row <number>`.
 ```
 <!-- timeline:end -->
 

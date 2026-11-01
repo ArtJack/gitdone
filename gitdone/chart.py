@@ -52,6 +52,7 @@ def points(plan, group=None, today=None):
     top = top_done.out.strip()
     rel = os.path.relpath(os.path.realpath(plan.doc), os.path.realpath(top)).replace(os.sep, "/")
     history = history_module.table_commits(top, rel, first_parent=True, today=_day(today) if today else None)
+    history = history[:gitio.fitting(top, [f"{sha}:{path}" for sha, _, path in history], gitio.MOST_BYTES_OF_HISTORY)]
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in history])
     by_day, scope_before = {}, None
     for (_, date, _), text in zip(reversed(history), reversed(texts)):
@@ -67,6 +68,10 @@ def points(plan, group=None, today=None):
 
 def csv_text(items):
     return "date,scope,strict,weighted\n" + "".join(f"{p['date']},{p['scope']},{p['strict']},{p['weighted']:g}\n" for p in items)
+
+
+def burndown_csv(items):
+    return "date,scope,left_all_work,left_strict\n" + "".join(f"{p['date']},{p['scope']},{round(p['scope'] - p['weighted'], 3):g},{p['scope'] - p['strict']}\n" for p in items)
 
 
 def _day(text):
@@ -247,7 +252,8 @@ def burndown(items, title, found, words):
     left_now = found["left"]
     needed = bool(deadline and today < deadline <= edge and left_now)
     scope_words = "A step up is scope, marked with its size, or a row going back. Either moves the date." + (" Dotted: what the deadline needs." if needed else "")
-    subtitle = "Rows left, in blue on Live rows alone, in orange with all work, from the table's git history."
+    kind = " ".join(str(live.get("kind", "Live")).split())
+    subtitle = f"Rows left, in blue on {kind} rows alone, in orange with all work, from the table's git history."
     if likely:
         subtitle += f" Dashed: a line through the last {found['window_days']} days, not a promise."
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" height="{HEIGHT}" role="img" aria-labelledby="t d">',
@@ -291,13 +297,12 @@ def burndown(items, title, found, words):
     out.append(f'<circle class="dot" cx="{origin[0]:.1f}" cy="{origin[1]:.1f}" r="5" fill="var(--weighted)"/>')
     label_x = LEFT + plot_w + 14
     label_y = TOP + 4
-    kind = escape(" ".join(str(live.get("kind", "Live")).split()))
     said = [(f"{left_now:g}", "rows left, all work")]
     if likely:
         said.append((_date_words(likely, likely.year != today.year), "likely"))
         if found.get("sure"):
             said.append((_date_words(sure, sure.year != today.year), "85% sure"))
-    said.append((f"{left_live:g}", f"rows left, {kind} alone"))
+    said.append((f"{left_live:g}", f"rows left, {escape(kind)} alone"))
     if live_likely:
         said.append((_date_words(live_likely, live_likely.year != today.year), "likely"))
     for value, name in said:

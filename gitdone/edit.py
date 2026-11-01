@@ -6,14 +6,13 @@ import datetime
 import os
 import re
 
-from . import evidence, gitio, history, table as tables
+from . import evidence, gitio, history, requirements, table as tables
 from .plan import PlanError
 from .shipped import Refused, fold_note, read_keeping_newlines, save
 
 TABLE_HEAD = ["| # | Name | Status | Note |", "|---|---|---|---|"]
 
 
-ID_WORD = re.compile(r"[A-Z][A-Z0-9]{0,9}-\d{1,9}(?:\.\d{1,9})*")
 MOST_VERSIONS_READ = 1000
 LARGEST_ROW_NUMBER = 100000000  # past this, a commit message could not name it
 
@@ -141,7 +140,7 @@ def remove(plan, row_number):
 
 def link(plan, row_number, ident):
     """Put a requirement's id in a row's note, where a later move keeps it. The status does not change, so this works on a row of any kind."""
-    if not ID_WORD.fullmatch(ident):
+    if not re.fullmatch(requirements.ID, ident):
         raise Refused(f"{ident!r} is not a requirement's id; one looks like REQ-12")
     text, newline, table = _loaded(plan)
     row = table.rows.get(row_number)
@@ -149,7 +148,7 @@ def link(plan, row_number, ident):
         raise Refused(f"row {row_number} is not in {plan.doc.name}")
     if row.prose:
         raise Refused(f"row {row_number} sits in a prose domain; give that domain a table of rows first")
-    if re.search(rf"(?<![A-Za-z0-9-]){re.escape(ident)}(?![0-9A-Za-z-])", f"{row.name} {row.note}"):
+    if ident in requirements.ID_IN_TEXT.findall(f"{row.name} {row.note}"):
         return f"row {row_number} already names {ident}; nothing changed"
     note = f"{ident}. {row.note}".strip() if row.note.strip() else ident
     lines = text.split("\n")

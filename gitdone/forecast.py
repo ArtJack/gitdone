@@ -20,6 +20,7 @@ WINDOW = 28
 ENOUGH = 3  # days with movement before a line is drawn through them
 SURE = 1.0364  # the 85th percentile of a normal curve, in spreads from its middle
 TOO_FAR = 3650
+MOST_DAYS = 36500
 STATES_BEFORE_THE_WINDOW = 5  # enough to find one the table could be read in
 
 
@@ -41,8 +42,14 @@ def _kinds(plan, text, wanted=None):
     return {r.num: r.kind for d in table.domains if wanted is None or d.n in wanted for r in d.rows}, bool(table.problems)
 
 
+def _credit(plan):
+    """How much of a row each kind counts as done. A row at the strict kind leaves nothing, whatever the percent gives it."""
+    return {**plan.weights, plan.strict_kind.name: 1.0}
+
+
 def _left(plan, rows):
-    return round(sum(1 - plan.weights.get(r.kind, 0.0) for r in rows), 6)
+    credit = _credit(plan)
+    return round(sum(1 - credit.get(r.kind, 0.0) for r in rows), 6)
 
 
 def table_steps(plan, start=None, today=None, wanted=None):
@@ -59,13 +66,17 @@ def table_steps(plan, start=None, today=None, wanted=None):
     born = commits[0][1]
     from_day = start.isoformat() if start is not None else ""
     first = next((i for i, c in enumerate(commits) if c[1] >= from_day), len(commits))
-    read_from = max(first - STATES_BEFORE_THE_WINDOW, 0)
+    read = commits[max(first - STATES_BEFORE_THE_WINDOW, 0):]
+    fits = gitio.fitting(top, [f"{sha}:{path}" for sha, _, path in reversed(read)], gitio.MOST_BYTES_OF_HISTORY)
+    if fits < len(read):  # more text than a signal should read: the newest of it, and for what reads this the table begins there
+        read = read[len(read) - fits:]
+        born = read[0][1] if read else today.isoformat()
 
     def stop(words):
         raise PlanError(f"git could not read the table's history: {words.strip()[:200]}")
-    texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in commits[read_from:]], failed=stop)
+    texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in read], failed=stop)
     before, steps = None, []
-    for (sha, date, _), text in zip(commits[read_from:], texts):
+    for (sha, date, _), text in zip(read, texts):
         if text is None:
             continue
         after, troubled = _kinds(plan, text, wanted)
@@ -90,7 +101,7 @@ class Pace:
         self.added = self.removed = 0
 
     def _take(self, offset, before, after):
-        weights, top = self.plan.weights, self.plan.strict_kind.name
+        weights, top = _credit(self.plan), self.plan.strict_kind.name
         new, gone = after.keys() - before.keys(), before.keys() - after.keys()
         for n in after.keys() & before.keys():
             was, now = before[n], after[n]
@@ -127,7 +138,9 @@ class Pace:
         return max(gains) / sum(gains) if gains else 0.0
 
 def read_pace(plan, group=None, days=WINDOW, today=None):
-    """The pace over the last `days` days, or over the table's life if that is shorter. None if the table has no commit at all."""
+    """The pace over the last `days` days, or over the table's life if that is shorter. None if the table has no commit at all, or this clone has lost its history."""
+    if _is_shallow(_where(plan)[0]):
+        return None
     today = today or datetime.date.today()
     wanted = set(plan.group(group).domains) if group else None
     start = today - datetime.timedelta(days=days - 1)
@@ -226,8 +239,8 @@ def _live_line(plan, rows, pace, today):
 
 def data(plan, group=None, days=WINDOW, today=None):
     """Everything `eta` says, as data."""
-    if days < 1:
-        raise PlanError("eta: the window must be at least one day")
+    if not 1 <= days <= MOST_DAYS:
+        raise PlanError(f"eta: the window must be from 1 to {MOST_DAYS} days")
     today = today or datetime.date.today()
     table = tables.load_clean(plan)
     wanted = set(plan.group(group).domains) if group else None
@@ -237,10 +250,10 @@ def data(plan, group=None, days=WINDOW, today=None):
            "strict": top / len(rows) if rows else 0.0, "weighted": tables.score(rows, plan.weights), "window_days": days, "moving_days": 0,
            "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "only_backwards": False, "last_change": None, "plan_problems": list(plan.signal_problems),
            "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "never_catches_up": False},
-           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": []}
+           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": [], "all_groups": bool(plan.groups) and not group}
     root, rel = _where(plan)
     shallow = _is_shallow(root)
-    pace = None if shallow else read_pace(plan, group=group, days=days, today=today)
+    pace = read_pace(plan, group=group, days=days, today=today)
     series = None
     if pace is not None:
         out.update(window_days=pace.days, moving_days=pace.moving_days(), pace_per_day=round(pace.per_day(), 3), largest_day_share=round(pace.largest_day_share(), 3),
@@ -309,7 +322,7 @@ def _kind(found):
 
 def _deadline_words(found, short=False):
     d = found["deadline"]
-    when = _day_words(d["date"], found["as_of"])
+    when = _day_words(d["date"], found["as_of"]) + (", all groups" if found.get("all_groups") else "")
     if d["days_left"] < 0 and found["left"]:
         return f"Deadline {when}: passed {_plural(-d['days_left'], 'day')} ago, with {_rows_words(found['left'])} rows left."
     if not found["left"]:
@@ -340,6 +353,11 @@ def _both_dates(found):
     return f"{_day_words(likely, found['as_of'])} with all work, and {kind} rows alone give no date yet"
 
 
+def _likely_done(found):
+    """A percent is per group, and a date is of what it says it is."""
+    return "All groups: likely done" if found.get("all_groups") else "Likely done"
+
+
 def headline(found):
     """The one thing `eta` is asked."""
     state, days = found["state"], found["window_days"]
@@ -347,7 +365,7 @@ def headline(found):
         if found["too_far"] or (found["live"]["too_far"] and not found["likely"]):
             return f"At the pace of the last {_plural(days, 'day')}, this is more than ten years away. That is a line, not a promise."
         condition = " if the scope stops growing" if found["scope"]["keeps_growing"] else ""
-        return f"Likely done {_both_dates(found)}{condition}: a line through the last {_plural(days, 'day')}, not a promise."
+        return f"{_likely_done(found)} {_both_dates(found)}{condition}: a line through the last {_plural(days, 'day')}, not a promise."
     if state == "done":
         rows, strict = found["rows"], found["strict"]
         if strict >= 1:
@@ -424,7 +442,7 @@ def opener_line(plan, today=None):
     found = data(plan, today=today)
     parts = []
     if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]):
-        parts.append(f"Likely done {_both_dates(found)}, at the last {_plural(found['window_days'], 'day')}' pace.")
+        parts.append(f"{_likely_done(found)} {_both_dates(found)}, at the last {_plural(found['window_days'], 'day')}' pace.")
     elif found["state"] in ("dated", "stalled", "shallow"):
         parts.append(headline(found))
     if found["scope"]["never_catches_up"]:
@@ -486,7 +504,7 @@ def left_now(plan):
 def _shift(before, after, series, today):
     """(from, to, days) of the likely date when what is left changes, or None if there is no date for it to move."""
     then, now = _dates(max(before, 0.0), series, today), _dates(max(after, 0.0), series, today)
-    if not then or not now or not then["likely"] or not now["likely"]:
+    if not then or not now or not then["likely"] or not now["likely"] or then["likely"] == now["likely"]:
         return None
     return then["likely"], now["likely"], (datetime.date.fromisoformat(now["likely"]) - datetime.date.fromisoformat(then["likely"])).days
 
@@ -530,7 +548,7 @@ def against(plan, base, today=None):
     pace = read_pace(plan, today=today)
     moved = None
     if pace is not None:
-        weights, strict = plan.weights, plan.strict_kind.name
+        weights, strict = _credit(plan), plan.strict_kind.name
 
         def left(kinds):
             return sum(1 - weights.get(k, 0.0) for k in kinds.values()), sum(k != strict for k in kinds.values())

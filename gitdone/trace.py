@@ -9,6 +9,13 @@ from . import focus, gitio, render, report, requirements, table as tables
 
 BACKTICKED = re.compile(r"`([^`\s]+)`")
 MOST_TESTS_SHOWN = 3
+NOT_TESTS = ("fixtures/*", "*/fixtures/*", "testdata/*", "*/testdata/*", "*/__snapshots__/*", "*/snapshots/*", "*.json", "*.yaml", "*.yml", "*.txt", "*.csv", "*.xml", "*.html", "*.md",
+             "*.snap", "*.png", "*.jpg", "*.svg", "*.lock", "*.toml", "*.ini", "*.cfg")
+
+
+def _is_test(path):
+    """What a test's folder holds is not all tests: a fixture a commit touched says nothing about a row being tested."""
+    return focus.matches(path, focus.TESTS) and not focus.matches(path, NOT_TESTS)
 
 
 def _cell(text):
@@ -29,10 +36,18 @@ def _files_by_commit(repo, shas):
     return out
 
 
-def _naming_commits(repo, known):
-    """{row: [(sha, paths)]} from every commit whose message names a row."""
+def _since_the_table(plan, repo):
+    """What keeps a walk to the table's first commit and what came after it, and None if it has none: `row 1` in a commit from before there was a row 1 was about something else."""
+    if focus._top(repo) != focus._top(plan.doc.parent):
+        return []
+    first = focus._first_table_commit(plan)
+    return [f"^{first}^@"] if first else None
+
+
+def _naming_commits(repo, known, limit):
+    """{row: [(sha, paths)]} from every commit in reach whose message names a row."""
     out = {}
-    for commit in focus.read_commits(repo, "-i", "--grep=row", "--no-merges"):
+    for commit in focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD", *limit) if limit is not None else ():
         for num in focus.named_rows(commit["message"], known):
             out.setdefault(num, []).append((commit["sha"], [path for path, _ in commit["files"]]))
     return out
@@ -44,13 +59,13 @@ def _tree(repo):
 
 
 def _says_tests(note, tree):
-    return [word for word in BACKTICKED.findall(note) if word in tree and focus.matches(word, focus.TESTS)]
+    return [word for word in BACKTICKED.findall(note) if word in tree and _is_test(word)]
 
 
 def rows_data(plan, offline=False):
     """Every row with the evidence behind it, the commits that name it, and the tests that came with them and still exist."""
     base = report.rows_data(plan, offline=offline)
-    repo = plan.repo or plan.doc.parent
+    repo = plan.repo or plan.dir
     known = {r["row"] for r in base if not r.get("prose")}
     if not focus.is_repository(repo):  # with no repository there is nothing to tie a row to, and the rows themselves still stand
         return [{**row, "named_by": [], "tests": []} for row in base if not row.get("prose")]
@@ -63,7 +78,7 @@ def rows_data(plan, offline=False):
             if resolved.code == 0:
                 full[sha] = resolved.out.strip()
     files = _files_by_commit(repo, full.values())
-    naming = _naming_commits(repo, known)
+    naming = _naming_commits(repo, known, _since_the_table(plan, repo))
     out = []
     for row in base:
         if row.get("prose"):
@@ -73,7 +88,7 @@ def rows_data(plan, offline=False):
         commits = [sha[:7] for sha, _ in naming.get(num, [])]
         for _, paths in naming.get(num, []):
             touched += paths
-        tests = sorted({path for path in touched if path in tree and focus.matches(path, focus.TESTS)} | set(_says_tests(row["note"], tree)))
+        tests = sorted({path for path in touched if path in tree and _is_test(path)} | set(_says_tests(row["note"], tree)))
         out.append({**row, "named_by": commits, "tests": tests})
     return out
 

@@ -21,7 +21,9 @@ a requirement no row names, which the opener, `check` and the Action say on ever
 **An independent attack reproduced 42 defects in the first cut of this layer, and two cold reads found what a stranger's first hour taught, and each now has a test.** A long line in a spec could hang the gate; a suggested command could run what a hostile spec put in it. `eta` chose its commits
 by the committer's date, so a rebase moved the date and one old commit hid the rest: it now reads what the history keeps. A future clock, a broken commit, a renamed or copied table, a shallow clone and a tracker beside another all told it something false, and no longer do. A row's number is no longer given out again.
 
-**Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. The burn-up and the view carry no forecast.
+**A third reader, who had seen neither of the first two reports, found 23 more, and five of them mattered most.** A row closed a requirement that said different words, because the comparison dropped numbers and words like add and remove: `Add SMS login` held `Remove SMS login`, and now only the same words do. Any merge that moved the table made everything inside it read as on plan, and a pull request's own run is such a merge, so the Action's line could say the opposite of the branch: a commit is now judged by its own change. A line of comments in a spec, a list of patterns in a plan, the ranges in one commit message and a table's old versions could each hold up a run far longer than their bytes should allow, and each now has a limit. `focus` stops after ten seconds and says it looked at part of the history. The first commit is no longer told it is off plan, a lock file in a folder is upkeep, a test on record is a test written since the table began, and a date with groups says it covers them all.
+
+**Still not in it.** No reading of code, and no gate on any of this: nothing here changes an exit code. A `deadline` is the plan's word and the view states it, so setting one takes a render, as any edit to what the view shows does. The burn-up and the view carry no forecast.
 
 ## 0.2.0 (2026-10-31)
 

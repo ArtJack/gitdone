@@ -10,6 +10,7 @@ import fnmatch
 import os
 import pathlib
 import re
+import time
 
 from . import evidence, forecast, gitio, history, render, table as tables
 from .discover import POINTER, find_plan
@@ -17,7 +18,12 @@ from .plan import Plan, PlanError, numbers
 
 WINDOW = 14
 NEXT_ROWS = 5
+MOST_DAYS = 36500
 MOST_COMMITS_LISTED = 20000
+MOST_SECONDS = 10  # a signal is a favour. Past this it stops and says it looked at part of the history, whatever the history holds
+LONGEST_MESSAGE = 10000
+MOST_RANGES = 20
+MOST_FILES_IN_A_COMMIT = 5000
 UPKEEP_SUBJECT_LINES = 50  # a subject can say what a small change is. A large one is judged by what it did
 LARGE_UPKEEP_LINES = 200
 ON, UNCLEAR, UPKEEP, OFF, TRACKER = "on plan", "unclear", "upkeep", "off plan", "tracker"
@@ -32,7 +38,7 @@ COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 NUMSTAT = re.compile(r"^(\d+|-)\t(\d+|-)\t(.*)$", re.S)
 TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "*/tests/*", "*/test/*", "*/spec/*", "*/specs/*", "*/__tests__/*", "test_*", "*/test_*",
          "*_test.*", "*.test.*", "*.spec.*")
-UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*.md", "*.rst", ".github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
+UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
                         ".pre-commit-config.yaml", "LICENSE*", "*.lock", "package-lock.json", "pnpm-lock.yaml", "go.sum", "go.mod", "Makefile", "Dockerfile*",
                         "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml")
 SOURCE_ROOTS = {"src", "lib", "app", "apps", "pkg", "packages", "services", "internal", "cmd"}
@@ -55,7 +61,7 @@ def matches(path, patterns):
 def words_of(text):
     """The words of a name or a subject that could tell one piece of work from another."""
     found = set()
-    for word in re.findall(r"[a-z0-9]+", text.lower()):
+    for word in re.findall(r"[^\W_]+", text.lower()):
         if len(word) >= 3 and word not in FEW_WORDS:
             found.add(word[:-1] if len(word) > 4 and word.endswith("s") else word)
     return found
@@ -71,13 +77,16 @@ def _row_numbers(message):
                 ranges.append((min(int(low), int(high)), max(int(low), int(high))))
             else:
                 single.add(int(low))
-    return single, ranges
+    return single, ranges[:MOST_RANGES]
 
 
 def named_rows(message, known):
     """The rows a commit message names: `row 12`, `Row: 12`, `rows 12, 13`, `rows 7-9`, or a branch `row-12` in a merge's subject."""
     single, ranges = _row_numbers(message)
-    return {n for n in known if n in single or any(low <= n <= high for low, high in ranges)}
+    found = {n for n in single if n in known}
+    if ranges:
+        found.update(n for n in known if any(low <= n <= high for low, high in ranges))
+    return found
 
 
 def is_repository(repo):
@@ -85,8 +94,9 @@ def is_repository(repo):
 
 
 def read_commits(repo, *spec, stdin_text=None):
-    """[{sha, parents, date, message, files: [(path, lines changed)]}], newest first. In a repository's subfolder, only what touched that folder, with
-    paths from it, so that a tracker in a monorepo answers for its own project and a plan's patterns mean what its other paths mean.
+    """[{sha, parents, date, message, files: [(path, lines changed)], lines}], newest first. In a repository's subfolder, only what touched that folder, with
+    paths from it, so that a tracker in a monorepo answers for its own project and a plan's patterns mean what its other paths mean. A message or a list of files past
+    what a person could mean is read as far as that: each is tried against every row and every pattern.
     """
     if not is_repository(repo):
         raise PlanError(f"{repo} is not a git repository, so it has no commits to read")
@@ -104,7 +114,7 @@ def read_commits(repo, *spec, stdin_text=None):
             continue
         parents, date, message = tokens[at + 1], tokens[at + 2], tokens[at + 3]
         at += 4
-        files = []
+        files, lines = [], 0
         while at < len(tokens):
             item = tokens[at].lstrip("\n")
             if COMMIT_ID.match(item):
@@ -112,8 +122,11 @@ def read_commits(repo, *spec, stdin_text=None):
             at += 1
             stat = NUMSTAT.match(item)
             if stat:
-                files.append((stat.group(3), (int(stat.group(1)) if stat.group(1).isdigit() else 1) + (int(stat.group(2)) if stat.group(2).isdigit() else 0)))
-        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip(), "files": files})
+                changed = (int(stat.group(1)) if stat.group(1).isdigit() else 1) + (int(stat.group(2)) if stat.group(2).isdigit() else 0)
+                lines += changed
+                if len(files) < MOST_FILES_IN_A_COMMIT:
+                    files.append((stat.group(3), changed))
+        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip()[:LONGEST_MESSAGE], "files": files, "lines": lines})
     return commits
 
 
@@ -133,10 +146,13 @@ def _top(path):
 
 
 def _from_plan_folder(repo, plan_dir):
-    """A plan's paths are from the plan's folder, and a commit's are from the repository's: this turns the second into the first."""
+    """A plan's paths are from the plan's folder, and a commit's are from the repository's, or from the folder the plan names as `repo`: this turns the second into the first."""
     prefix = os.path.relpath(os.path.realpath(plan_dir), os.path.realpath(repo)).replace(os.sep, "/")
-    if prefix == "." or prefix.startswith(".."):
+    if prefix == ".":
         return lambda path: path
+    if prefix.startswith(".."):
+        below = os.path.relpath(os.path.realpath(repo), os.path.realpath(plan_dir)).replace(os.sep, "/")
+        return (lambda path: f"{below}/{path}") if not below.startswith("..") else (lambda path: path)
     return lambda path: path[len(prefix) + 1:] if path.startswith(prefix + "/") else path
 
 
@@ -146,7 +162,8 @@ class _Reading:
     def __init__(self, plan, start, today):
         self.plan = plan
         self.capped = False
-        self.repo = plan.repo or plan.doc.parent
+        self.repo = plan.repo or plan.dir
+        self.ends = time.monotonic() + MOST_SECONDS
         self.same_repository = _top(self.repo) is not None and _top(self.repo) == _top(plan.doc.parent)
         table = tables.load_clean(plan)
         self.table = table
@@ -155,6 +172,10 @@ class _Reading:
         self.known = {r.num for r in everything}  # a row in a domain with no table of rows is still a row, and can be named
         self.open = {r.num for r in everything if r.kind != plan.strict_kind.name}
         self.words = {r.num: words_of(r.name) for r in rows}
+        self.by_word = {}
+        for num, words in self.words.items():
+            for word in words:
+                self.by_word.setdefault(word, []).append(num)
         self.cited, self.pull_requests, self.merge_requests = [], {}, {}
         for row in rows:
             for claim in evidence.release_claims(plan, row.words()):
@@ -172,6 +193,7 @@ class _Reading:
         self.not_upkeep = plan.focus.get("not_upkeep", [])
         self.to_plan = _from_plan_folder(self.repo, plan.dir)
         self.tracker = self._tracker_files(plan)
+        self.table_file = next((name for name in self.tracker if self.same_repository and os.path.realpath(os.path.join(self.repo, name)) == os.path.realpath(plan.doc)), None)
         self.moved_by, self.finished_on = {}, {}
         top = plan.strict_kind.name
         self.born = None
@@ -180,16 +202,19 @@ class _Reading:
         except PlanError:  # a table outside any repository has no history, and the commits can still be read
             steps = []
         for sha, date, before, after in steps:
-            changed = {n for n in after.keys() & before.keys() if after[n] != before[n]} | (after.keys() - before.keys())
-            if changed:
-                self.moved_by[sha] = changed
             for n in after.keys() & before.keys():
                 if after[n] == top and before[n] != top:
                     self.finished_on[n] = date
 
+    def out_of_time(self):
+        if time.monotonic() > self.ends:
+            self.capped = True
+            return True
+        return False
+
     def _paths(self, plan):
         out = []
-        ids = {w.get("id"): w for w in plan.workstreams}
+        ids = {w["id"]: w for w in plan.workstreams}
         for key, patterns in plan.focus.get("paths", {}).items():
             rows = render.workstream_rows_numbers(ids[key]) if key in ids else numbers(key, f"focus: paths: {key}")
             out.append((set(rows) & self.known, patterns))  # only what the table has: the plan said a few bytes cannot ask for much, and here they ask for nothing to be kept
@@ -212,14 +237,16 @@ class _Reading:
         return path in self.tracker or os.path.basename(path) == POINTER
 
     def _is_upkeep(self, path):
-        return matches(path, self.upkeep) and not matches(path, self.not_upkeep)
+        """A plan's patterns are from the plan's folder. A project file is one at any depth: a monorepo keeps a lock file in each of its folders."""
+        here = self.to_plan(path)
+        return (matches(here, self.upkeep) or matches(os.path.basename(path), UPKEEP_FILES)) and not matches(here, self.not_upkeep)
 
     def _in_reach(self, num, date):
         """Whether a row could still have been advanced on a day: it is open, or it finished on or after that day."""
         return num in self.open or self.finished_on.get(num, "") >= date
 
     def direct_links(self, commit):
-        """The rows a commit is tied to by someone's word: its message, a row's citation, its own move in the table."""
+        """The rows a commit is tied to by someone's word: its message, or a row's citation."""
         named = named_rows(commit["message"], self.known)
         if named:
             return named, "named in the message"
@@ -235,9 +262,6 @@ class _Reading:
             for number in pattern.findall(commit["message"] if table is self.merge_requests else first_line):
                 if int(number) in table:
                     return set(table[int(number)]), "its pull request is cited as evidence"
-        moved = self.moved_by.get(commit["sha"])
-        if moved:
-            return set(moved), "it moved the row in the table"
         return set(), ""
 
     def _off_plan_reason(self, commit):
@@ -256,6 +280,8 @@ class _Reading:
         if REVERT_SUBJECT.match(subject):
             return UPKEEP, set(), "it reverts something, which advances no row"
         rows, because = self.direct_links(commit)
+        if not rows and commit["sha"] in self.moved_by:
+            rows, because = set(self.moved_by[commit["sha"]]), "it moved the row in the table"
         if rows:
             if because == "named in the message" and not any(self._in_reach(n, commit["date"]) for n in rows):
                 return UNCLEAR, rows, f"row {min(rows)} had finished by then"
@@ -274,13 +300,11 @@ class _Reading:
                 return ON, reachable, "the plan ties its files to the row"
         if inherited:
             return UNCLEAR, set(inherited[0]), inherited[1]
-        said = words_of(subject)
-        best, shared_most = None, 0
-        for num in sorted(self.words):
-            shared = len(said & self.words[num])
-            enough = shared >= 2 or (shared == 1 and len(self.words[num]) == 1)
-            if enough and shared > shared_most and self._in_reach(num, commit["date"]):
-                best, shared_most = num, shared
+        shared = {}
+        for word in words_of(subject):
+            for num in self.by_word.get(word, ()):
+                shared[num] = shared.get(num, 0) + 1
+        best = next((n for n in sorted(shared, key=lambda n: (-shared[n], n)) if (shared[n] >= 2 or len(self.words[n]) == 1) and self._in_reach(n, commit["date"])), None)
         if best is not None:
             return UNCLEAR, {best}, f"it looks like row {best}, by its words"
         if UPKEEP_SUBJECT.match(subject):
@@ -295,19 +319,20 @@ BRANCH_FOR_THE_ROW = "its branch is named for the row"
 
 
 def _inherited(reading, commits):
-    """What a commit brings from around it. A merge tied to a row brings its branch along, since a pull request's title says what the commits inside it were
-    for. A branch named for a row does the same for what it holds, before any merge.
+    """What a commit brings from around it. A merge someone tied to a row brings its branch along, since a pull request's title says what the commits inside it were
+    for. A move in the table is not such a word: a merge of anything moves the table if anything inside it did, and CI's own merge is nobody's. A branch named for a row
+    does the same for what it holds, before any merge, and on a pull request's run the checkout has no branch, so the run says which it is.
     """
     out = {}
     for commit in commits:
-        if len(commit["parents"]) > 1:
+        if len(commit["parents"]) > 1 and not reading.out_of_time():
             into = MERGE_INTO.match(commit["message"])  # `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and says nothing about that work
             rows, _ = reading.direct_links({**commit, "message": into.group(1)} if into else commit)
             if rows:
                 inside = gitio.git(reading.repo, "rev-list", f"{commit['parents'][0]}..{commit['sha']}")
                 for sha in inside.out.split():
                     out.setdefault(sha, (rows, MERGED_FOR_THE_ROW))
-    branch = gitio.git(reading.repo, "symbolic-ref", "--quiet", "--short", "HEAD").out.strip()
+    branch = gitio.git(reading.repo, "symbolic-ref", "--quiet", "--short", "HEAD").out.strip() or os.environ.get("GITHUB_HEAD_REF", "")
     rows = named_rows(branch, reading.known)
     if rows and branch != reading.plan.default_branch:
         for ref in (f"refs/heads/{reading.plan.default_branch}", f"refs/remotes/origin/{reading.plan.default_branch}"):
@@ -318,17 +343,42 @@ def _inherited(reading, commits):
     return out
 
 
+def _moves(reading, commits):
+    """{commit: rows it moved or added}, from its own change to the table, so that a commit says the same on its branch, inside a merge and after one."""
+    mine = [c for c in commits if len(c["parents"]) == 1 and any(path == reading.table_file for path, _ in c["files"]) and not all(reading._is_tracker(path) for path, _ in c["files"])]
+    if not mine:
+        return {}
+    top, rel = forecast._where(reading.plan)
+    specs = [f"{side}:{rel}" for c in mine for side in (c["parents"][0], c["sha"])]
+    specs = specs[:gitio.fitting(top, specs, gitio.MOST_BYTES_OF_HISTORY) // 2 * 2]
+    texts, out = gitio.blobs(top, specs), {}
+    for at, commit in enumerate(mine[:len(specs) // 2]):
+        if texts[2 * at] is None or texts[2 * at + 1] is None:
+            continue
+        before = forecast._kinds(reading.plan, texts[2 * at])[0]
+        after, troubled = forecast._kinds(reading.plan, texts[2 * at + 1])
+        if not after or (troubled and len(after) < len(before)):
+            continue
+        moved = {n for n in after.keys() & before.keys() if after[n] != before[n]} | (after.keys() - before.keys())
+        if moved:
+            out[commit["sha"]] = moved
+    return out
+
+
 def _judged(reading, spec, stdin_text=None):
     commits = read_commits(reading.repo, *spec, stdin_text=stdin_text)
+    reading.moved_by = _moves(reading, commits)
     inherited = _inherited(reading, commits)
     out = []
     for commit in commits:
+        if reading.out_of_time():
+            break
         if len(commit["parents"]) > 1:
             continue
         kind, rows, because = reading.judge(commit, inherited.get(commit["sha"]))
         work = [(path, lines) for path, lines in commit["files"] if not reading._is_tracker(path) and not reading._is_upkeep(path)]
         out.append({"commit": commit["sha"][:7], "date": commit["date"], "subject": commit["message"].split("\n", 1)[0], "class": kind, "rows": sorted(rows),
-                    "because": because, "lines": sum(lines for _, lines in commit["files"]), "area": _area(work or commit["files"])})
+                    "because": because, "lines": commit["lines"], "area": _area(work or commit["files"])})
     return out
 
 
@@ -366,10 +416,11 @@ def _first_table_commit(plan):
     return commits[-1][0] if commits else None
 
 
+
 def data(plan, days=WINDOW, today=None, revisions=None):
     """Where the commits went over the last `days` days, or over a range of revisions, as data."""
-    if days < 1:
-        raise PlanError("focus: the window must be at least one day")
+    if not 1 <= days <= MOST_DAYS:
+        raise PlanError(f"focus: the window must be from 1 to {MOST_DAYS} days")
     today = today or datetime.date.today()
     start = today - datetime.timedelta(days=days - 1)
     reading = _Reading(plan, None if revisions else start, today)
@@ -389,14 +440,13 @@ def data(plan, days=WINDOW, today=None, revisions=None):
     for c in tally[OFF]:
         per_area[c["area"]] = per_area.get(c["area"], 0) + c["lines"]
     following = render.opener_data(plan, reading.table)["next"]
-    next_rows = next_data(plan)["rows"]
     return {"days": None if revisions else days, "since": None if revisions else start.isoformat(), "revisions": revisions, "commits": len(counted),
             "on_plan": len(tally[ON]), "unclear": len(tally[UNCLEAR]), "upkeep": len(tally[UPKEEP]), "off_plan": len(tally[OFF]),
             "tracker_only": len(judged) - len(counted), "shallow": forecast._is_shallow(reading.repo), "newest_only": reading.capped, "plan_problems": list(plan.signal_problems),
             "lines": {"on_plan": sum(c["lines"] for c in tally[ON]), "unclear": sum(c["lines"] for c in tally[UNCLEAR]), "upkeep": sum(c["lines"] for c in tally[UPKEEP]), "off_plan": sum(c["lines"] for c in tally[OFF])},
             "rows": [{"row": n, "commits": per_row[n]} for n in sorted(per_row, key=lambda n: (-per_row[n], n))],
             "areas": [{"area": a, "lines": per_area[a]} for a in sorted(per_area, key=lambda a: (-per_area[a], a))],
-            "next": following, "next_row": next_rows[0]["row"] if next_rows else None, "list": judged}
+            "next": following, "list": judged}
 
 
 def _lines(count):
@@ -423,7 +473,7 @@ def _next_words(found):
 def text(found, show_all=False):
     span = (f"Last {found['days']} days" if found["days"] != 1 else "Today") if found["days"] else f"In {render.one_line(found['revisions'])}"
     shallow = ["This clone is shallow, so only part of the history is here."] if found["shallow"] else []
-    shallow += [f"Only the newest {MOST_COMMITS_LISTED:,} commits were looked at."] if found["newest_only"] else []
+    shallow += ["Only part of the history was looked at: it is too large to read in time."] if found["newest_only"] else []
     shallow += [f"⚠ {render.one_line(words)}" for words in found["plan_problems"]]
     if not found["commits"]:
         return "\n".join(shallow + [line for line in (f"{span}: no commits but the tracker's own since the table began.", _next_words(found)) if line])
@@ -460,9 +510,8 @@ def text(found, show_all=False):
     if next_words:
         L += ["", next_words]
     if found["off_plan"] or found["unclear"]:
-        example = found["next_row"] or 12
         L += ["Off plan is not wrong, only unplanned. If it belongs, `gitdone add \"<what it is>\"` puts it in the scope, and the date moves.",
-              f"To tie a commit to a row, name the row in its message: row {example}."]
+              "To tie a commit to a row, name the row in its message: `row <number>`."]
     return "\n".join(L)
 
 
@@ -487,12 +536,13 @@ def last_line(plan):
     head = gitio.git(reading.repo, "rev-parse", "--short=7", "HEAD").out.strip()
     if not judged or judged[0]["class"] != OFF or not judged[0]["commit"].startswith(head[:7]):  # in a subfolder, the newest commit that touched it may be an old one
         return None
+    first = _first_table_commit(plan)
+    if first is None or first.startswith(head[:7]):  # nothing could have been on a plan that did not exist yet
+        return None
     following = render.opener_data(plan, reading.table)["next"]
-    next_rows = next_data(plan)["rows"]
     next_words = f" Next on the plan: {following['id']} ({following['name']})." if following else ""
-    example = next_rows[0]["row"] if next_rows else 12
     return (f"gitdone: {judged[0]['commit']} is off plan: {judged[0]['because']}.{next_words} "
-            f"Name the row in the message (row {example}), or put the work in the scope: gitdone add \"<what it is>\"")
+            f"If it is for a row, name the row in the message; if it is new work, put it in the scope: gitdone add \"<what it is>\"")
 
 
 def last_lines():

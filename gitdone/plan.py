@@ -24,6 +24,8 @@ EVIDENCE_RULES = (None, "release", "branch", "note")
 SECTION_TYPES = ("group", "workstreams", "table", "list", "products", "rows")
 RULE_KEYS = ("kinds", "default_branch", "repo", "status_doc", "status_out", "evidence_pattern", "rows_total", "groups")
 MAX_NUMBERS = 100000
+MOST_PATTERNS, LONGEST_PATTERN = 500, 200
+MOST_SIGNAL_PROBLEMS = 10
 
 
 class PlanError(Exception):
@@ -44,7 +46,7 @@ def numbers(value, what):
         out = []
         for part in value.split(","):
             low, dash, high = part.strip().partition("-")
-            if not low.isdigit() or (dash and not high.isdigit()) or len(low) > 9 or len(high) > 9:
+            if not low.isdecimal() or (dash and not high.isdecimal()) or len(low) > 9 or len(high) > 9:
                 raise PlanError(f"{what}: {value!r} is not a range like \"1-11,14\"")
             if len(out) + int(high if dash else low) - int(low) > MAX_NUMBERS:
                 raise PlanError(f"{what}: {value[:40]!r} names more than {MAX_NUMBERS} rows")
@@ -217,10 +219,20 @@ class Plan:
         self.groups = [self._group(g) for g in _typed(data, "groups", list, [])]
         self.workstreams = _typed(data, "workstreams", list, [])
         for w in self.workstreams:
-            if not isinstance(w, dict) or "id" not in w:
-                raise PlanError(f"workstreams: each one needs an id, got {w!r}")
+            if not isinstance(w, dict) or not isinstance(w.get("id"), (str, int)):
+                raise PlanError(f"workstreams: each one needs an id, a word or a number, got {w!r}")
         self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
-        self.focus = self._signal_focus(data)
+        self._named_workstreams = {}
+        for w in self.workstreams:
+            self._named_workstreams.setdefault(w["id"], w)
+        try:
+            self.focus = self._signal_focus(data)
+        except Exception as err:  # the gate's rules are read strictly, and this is not one of them
+            self.signal_problems.append(f"focus: could not be read ({err}), so it is ignored")
+            self.focus = {}
+        if len(self.signal_problems) > MOST_SIGNAL_PROBLEMS:
+            more = len(self.signal_problems) - MOST_SIGNAL_PROBLEMS
+            self.signal_problems[MOST_SIGNAL_PROBLEMS:] = [f"and {more} more mistakes in what only `eta`, `focus` and `matrix` read"]
         if self.deadline and self.start and self.start > self.deadline:
             self.signal_problems.append(f"start: {self.start} is after the deadline, {self.deadline}, so it is ignored")
             self.start = None
@@ -253,17 +265,27 @@ class Plan:
         for key in raw:
             if key not in FOCUS_KEYS:
                 self.signal_problems.append(f"focus: {key!r} is not one of {', '.join(sorted(FOCUS_KEYS))}, so it is ignored")
+        left = MOST_PATTERNS
+
+        def within(patterns):
+            """These are tried on every file of every commit, so a few bytes must not be able to ask for much."""
+            nonlocal left
+            kept = [p for p in patterns if len(p) <= LONGEST_PATTERN][:max(left, 0)]
+            left -= len(kept)
+            if len(kept) < len(patterns):
+                self.signal_problems.append(f"focus: only the first {MOST_PATTERNS} file patterns, of up to {LONGEST_PATTERN} characters each, are read")
+            return kept
         for key in ("upkeep", "not_upkeep"):
             value = raw.get(key, [])
             if isinstance(value, list) and all(isinstance(p, str) for p in value):
-                out[key] = value
+                out[key] = within(value)
             else:
                 self.signal_problems.append(f"focus: {key}: expected a list of file patterns, got {value!r}, so it is ignored")
         paths = raw.get("paths", {})
         if not isinstance(paths, dict):
             self.signal_problems.append(f"focus: paths: expected rows or workstreams and their file patterns, got {paths!r}, so it is ignored")
             paths = {}
-        ids = {w.get("id") for w in self.workstreams}
+        ids = {w["id"] for w in self.workstreams}
         out["paths"], named = {}, 0
         for key, patterns in paths.items():
             if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
@@ -278,7 +300,9 @@ class Plan:
                 if named > MAX_NUMBERS:
                     self.signal_problems.append(f"focus: paths names more than {MAX_NUMBERS} rows, so the rest is ignored")
                     break
-            out["paths"][key] = patterns
+            out["paths"][key] = within(patterns)
+            if left <= 0:
+                break
         return out
 
     def root(self):
@@ -374,10 +398,10 @@ class Plan:
         return [Group("all", "All", self.title, [d.n for d in table.domains], None)]
 
     def workstream(self, ws_id):
-        for w in self.workstreams:
-            if w.get("id") == ws_id:
-                return w
-        raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
+        found = self._named_workstreams.get(ws_id) if isinstance(ws_id, (str, int)) else None
+        if found is None:
+            raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
+        return found
 
     def problems(self, table):
         """Why this plan and this table cannot be rendered together: the shape, then the references."""

@@ -21,6 +21,7 @@ Result = collections.namedtuple("Result", "state detail unanswerable", defaults=
 VERIFIED, UNVERIFIED, UNPROVEN, ABSENT, CONTRADICTED = "verified", "unverified", "unproven", "absent", "contradicted"
 
 # 64 digits is a SHA-256 repository's id. 18 digits is the most a number here can have: past 4,300 Python's own answer depends on its version.
+NAMED_EVIDENCE = re.compile(r"\s*\(\s*(?:`?[0-9a-f]{7,64}`?|PR\s*#?\s*\d+|pull request\s*#?\s*\d+)\s*\)", re.I)
 QUOTED_SHA = re.compile(r"`([0-9a-f]{7,64})`")
 BARE_SHA = re.compile(r"(?<![\w/.-])([0-9a-f]{7,64})(?![\w/-])")
 HEX_ID = re.compile(r"^[0-9a-f]{7,64}$")

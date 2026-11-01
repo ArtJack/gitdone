@@ -79,10 +79,19 @@ HANDLERS = {
     "week": lambda a: history.delta_data(_plan(a), since=a.get("since")),
     "portfolio": lambda a: portfolio.scan([a.get("folder") or "."]),
     "eta": lambda a: forecast.data(_plan(a)),
-    "focus": lambda a: focus.data(_plan(a), days=a.get("days") if isinstance(a.get("days"), int) and not isinstance(a.get("days"), bool) else focus.WINDOW),
+    "focus": lambda a: focus.data(_plan(a), days=_days(a)),
     "next": lambda a: focus.next_data(_plan(a)),
     "matrix": lambda a: trace.data(_plan(a), offline=bool(a.get("offline"))),
 }
+
+
+def _days(arguments):
+    days = arguments.get("days")
+    if days is None:
+        return focus.WINDOW
+    if isinstance(days, bool) or not isinstance(days, int):
+        raise PlanError(f"days: expected a whole number, got {days!r}")
+    return days
 
 
 def _call(params):
