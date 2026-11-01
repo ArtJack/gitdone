@@ -15,13 +15,13 @@
     {"name": "Not built", "phrase": "not built", "weight": 0.0}
   ],
   "workstreams": [
-    {"id": "P1", "name": "Foundation", "rows": "7-14", "state": "CI is green on three operating systems, and 0.2.0 is on PyPI by the release workflow", "needs": ""},
+    {"id": "P1", "name": "Foundation", "rows": "7-14", "state": "CI is green on three operating systems, and 0.3.0 is on PyPI by the release workflow", "needs": ""},
     {"id": "P2", "name": "Onboarding", "rows": "15-20,43,50", "state": "built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person", "needs": "one person who has not seen it"},
     {"id": "P3", "name": "Visibility", "rows": "21-26", "state": "the gate, the badge branch and the comment on a pull request have all run on GitHub", "needs": ""},
     {"id": "P4", "name": "Evidence and agents", "rows": "27-34,41,42", "state": "built; the skills.sh listing is the owner's call", "needs": "the owner's word for the listing"},
     {"id": "P5", "name": "Adoption", "rows": "35-36", "state": "one real project runs on the engine", "needs": "each project's owner to name its scope"},
     {"id": "P7", "name": "Time and focus", "rows": "44-49", "state": "merged, and released in 0.3.0", "needs": ""},
-    {"id": "P6", "name": "Launch", "rows": "37-40", "state": "public, and 0.2.0 is on PyPI", "needs": "two weeks of its own gate before 1.0"}
+    {"id": "P6", "name": "Launch", "rows": "37-40", "state": "public, and 0.3.0 is on PyPI", "needs": "two weeks of its own gate before 1.0"}
   ],
   "order": ["P1", "P2", "P3", "P4", "P5", "P7", "P6"],
   "decisions": [

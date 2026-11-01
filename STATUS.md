@@ -25,13 +25,13 @@
 
 | # | Workstream | Rows | Strict | Weighted | State | Needs |
 |---|---|---|---|---|---|---|
-| 1 | **P1** Foundation | 7, 8, 9, 10, 11, 12, 13, 14 | 8/8 | 100% `██████████` | CI is green on three operating systems, and 0.2.0 is on PyPI by the release workflow |  |
+| 1 | **P1** Foundation | 7, 8, 9, 10, 11, 12, 13, 14 | 8/8 | 100% `██████████` | CI is green on three operating systems, and 0.3.0 is on PyPI by the release workflow |  |
 | 2 | **P2** Onboarding | 15, 16, 17, 18, 19, 20, 43, 50 | 7/8 | 92% `█████████░` | built; one cold reader reached a committed view in under two minutes and found what the strict gate then fixed; not yet tried by a person | one person who has not seen it |
 | 3 | **P3** Visibility | 21, 22, 23, 24, 25, 26 | 6/6 | 100% `██████████` | the gate, the badge branch and the comment on a pull request have all run on GitHub |  |
 | 4 | **P4** Evidence and agents | 27, 28, 29, 30, 31, 32, 33, 34, 41, 42 | 8/10 | 84% `████████░░` | built; the skills.sh listing is the owner's call | the owner's word for the listing |
 | 5 | **P5** Adoption | 35, 36 | 0/2 | 20% `██░░░░░░░░` | one real project runs on the engine | each project's owner to name its scope |
 | 6 | **P7** Time and focus | 44, 45, 46, 47, 48, 49 | 6/6 | 100% `██████████` | merged, and released in 0.3.0 |  |
-| 7 | **P6** Launch | 37, 38, 39, 40 | 1/4 | 25% `██░░░░░░░░` | public, and 0.2.0 is on PyPI | two weeks of its own gate before 1.0 |
+| 7 | **P6** Launch | 37, 38, 39, 40 | 1/4 | 25% `██░░░░░░░░` | public, and 0.3.0 is on PyPI | two weeks of its own gate before 1.0 |
 
 **Next, in order:** P2 → P4 → P5 → P6.
 
