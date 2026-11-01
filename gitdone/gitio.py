@@ -61,13 +61,13 @@ def git(repo, *args, stdin_text=None, timeout=30):
 
 
 def objects(repo, specs):
-    """(name, bytes) of each of these `commit:path` objects, in order: None for one that is missing, and for all of them if git cannot say."""
+    """(name, bytes) of each of these `commit:path` objects, in order, with None for one that is missing. None in place of the list if git cannot say."""
     if not specs:
         return []
     done = git(repo, "cat-file", "--batch-check=%(objectname) %(objectsize)", stdin_text="\n".join(specs) + "\n", timeout=60)
     lines = done.out.splitlines() if not done.code else []
     if len(lines) != len(specs):
-        return [None] * len(specs)
+        return None
     fields = [line.split() for line in lines]
     return [(said[0], int(said[1])) if len(said) == 2 and said[1].isdigit() else None for said in fields]
 
@@ -76,8 +76,10 @@ def fitting(repo, specs, most_bytes):
     """How many of these `commit:path` objects, from the first, fit in a number of bytes. What a history holds is not what its pack weighs, so a stranger's few bytes can be a lot of text.
     If git cannot say, whoever reads the text next will find out and say so.
     """
-    total, count = 0, 0
-    for found in objects(repo, specs):
+    total, count, found_all = 0, 0, objects(repo, specs)
+    if found_all is None:
+        return len(specs)
+    for found in found_all:
         total += found[1] if found else 0
         if total > most_bytes:
             break

@@ -16,7 +16,7 @@ import unittest.mock
 
 from helpers import ENGINE, clean_env, delete_tree, git, needs_sh
 
-from gitdone import chart, ci, cli, focus, forecast, gate, gitio, history, requirements, table as tables, trace
+from gitdone import chart, ci, cli, focus, forecast, gate, gitio, history, portfolio, requirements, table as tables, trace
 from gitdone.plan import Plan, PlanError
 
 TODAY = datetime.date(2026, 3, 1)
@@ -1844,20 +1844,6 @@ class TheFourthAttack(Case):
         self.assertEqual(found["off_plan"], 0)
         self.assertEqual({c["subject"]: c["class"] for c in found["list"]}["Rename the table"], focus.TRACKER)
 
-    def test_w4_a_table_of_many_names_is_read_as_far_as_that_and_says_so(self):
-        self.write_table()
-        self.commit("2026-03-01", "start")
-        name = "status-table.md"
-        for i in range(12):
-            git(self.repo, "mv", name, f"table{i}.md")
-            name = f"table{i}.md"
-            self.write_plan(status_doc=name)
-            self.commit("2026-03-02", f"Rename {i}", table=False)
-        reading = focus._Reading(self.plan(), None, datetime.date(2026, 3, 30))
-        self.assertEqual(len(reading.table_paths), focus.MOST_TABLE_NAMES)
-        self.assertEqual(reading.table_paths[0], name)
-        self.assertTrue(reading.capped)
-
     # W5: a table born on a branch
     def test_w5_a_table_born_on_a_branch_that_was_merged_has_that_branch_s_commits(self):
         self.named("Sign in", "Export")
@@ -1882,7 +1868,7 @@ class TheFourthAttack(Case):
         self.commit("2026-02-01", "With a clock behind")
         git(self.repo, "checkout", "-q", "main")
         self.merge_commit("side", day="2026-03-02")
-        self.assertEqual(focus._first_table_commit(self.plan()), first)
+        self.assertEqual(focus._began(self.plan())[0], first)
         self.assertEqual(set(self.judged()) >= {"On the same day", "With a clock behind"}, True)
 
     def test_w5_a_branch_forked_before_the_table_keeps_what_main_brought(self):
@@ -1913,8 +1899,13 @@ class TheFourthAttack(Case):
         self.assertEqual(self.parsed("| Thing | Words |\n|---|---|\n| REQ-1 | Sign in |\n| REQ-2: Export | High |\n"), [("REQ-1", "Sign in"), ("REQ-2", "Export")])
         self.assertEqual(self.parsed("| REQ-1 | Sign in |\n"), [("REQ-1", "Sign in")])
 
-    def test_w6_an_id_anywhere_else_refers_to_it(self):
-        self.assertEqual(self.parsed("| Area | Depends on |\n|---|---|\n| Billing | REQ-2 |\n\n- REQ-1: Sign in\n- REQ-2: Export\n"), [("REQ-1", "Sign in"), ("REQ-2", "Export")])
+    def test_w6_an_id_alone_elsewhere_may_only_refer_to_it(self):
+        self.named("Sign in", "Export")
+        self.write_table()
+        self.spec("| Area | Depends on |\n|---|---|\n| Billing | REQ-2 |\n\n- REQ-1: Sign in\n- REQ-2: Export\n")
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+
+    def test_w6_prose_in_a_cell_is_prose(self):
         self.assertEqual(self.parsed("| Feature | Status |\n|---|---|\n| Export | REQ-3 was dropped in v2 |\n"), [])
 
     def test_w6_what_a_list_says_outranks_what_a_table_says_of_it(self):
@@ -1950,18 +1941,6 @@ class TheFourthAttack(Case):
         with unittest.mock.patch.object(focus, "MOST_COMMITS_LISTED", 3):
             found = focus.data(self.plan(), days=14, today=datetime.date(2026, 3, 30))
         self.assertEqual((found["commits"], found["newest_only"]), (1, False))
-
-    # W8
-    def test_w8_a_workstream_s_id_is_a_word(self):
-        self.write_table()
-        self.engine("render", "--write")
-        for keys in ({"workstreams": [{"id": 1, "name": "One", "rows": [1]}]}, {"workstreams": [{"id": "P1", "rows": [1]}], "order": [1]}):
-            with self.subTest(str(keys)):
-                self.write_plan(**keys)
-                done = self.engine("check", "--offline")
-                self.assertEqual(done.returncode, 2)
-                self.assertNotIn("TypeError", done.stderr + done.stdout)
-                self.assertIn("a word", done.stderr + done.stdout)
 
     # W9
     def merged_in(self, message):
@@ -2140,6 +2119,339 @@ class TheFourthAttack(Case):
         self.commit("2026-03-01", "first", files={"app/tests/test_a.py": "1\n"}, table=False)
         rows = trace.rows_data(self.plan(), offline=True)
         self.assertEqual([r["tests"] for r in rows], [["app/tests/test_a.py"], ["tests/test_a.py"]])
+
+
+class TheFifthAttack(Case):
+    """What a fifth reader found in the fixes for the fourth: X1 to X19. Most of it is a rule gone too far, and each test holds what was right before that rule."""
+
+    named, set_row, found, judged, merge_commit, spec = (TheFourthAttack.named, TheFourthAttack.set_row, TheFourthAttack.found, TheFourthAttack.judged,
+                                                         TheFourthAttack.merge_commit, TheFourthAttack.spec)
+
+    def parsed(self, text):
+        return [(item.ident, item.words) for item in requirements.parse(text, "spec.md")]
+
+    def coverage(self):
+        return requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+
+    # X1: a requirement lost is a gap nobody sees
+    def test_x1_an_id_is_read_wherever_the_table_keeps_it(self):
+        for heading in ("Requirement", "User Story", "Ticket", "Identifier", "ReqID", "Req. ID", "Anything at all"):
+            with self.subTest(heading):
+                text = f"| # | {heading} | Status |\n|---|---|---|\n| 1 | REQ-2: Export data | Open |\n| 2 | REQ-3 | Delete it |\n"
+                self.assertEqual(self.parsed(text), [("REQ-2", "Export data"), ("REQ-3", "Delete it")])
+
+    def test_x1_nor_does_it_need_a_heading_or_a_rule(self):
+        for text in ("| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n", "| # | R |\n|---|---|\n| 1 | REQ-2: Export data |\n\nSome words.\n\n| 2 | REQ-3: Delete |\n",
+                     "| # | R |\n---|---\n| 1 | REQ-2: Export data |\n| 2 | REQ-3: Delete |\n"):
+            with self.subTest(text[:20]):
+                self.assertEqual(self.parsed(text), [("REQ-2", "Export data"), ("REQ-3", "Delete")])
+
+    def test_x1_the_gap_stays_open(self):
+        self.named("Login", "Thing two")
+        self.write_table()
+        self.spec("- REQ-1: Login\n\n| # | Requirement | Status |\n|---|---|---|\n| 1 | REQ-2: Export data | Open |\n| 2 | REQ-3: Delete account | Open |\n")
+        self.assertEqual([item.ident for item in self.coverage()["without"]], ["REQ-2", "REQ-3"])
+        self.assertIn("2 requirements have no row", requirements.opener_line(self.plan(), tables.load_clean(self.plan())))
+
+    def test_x1_a_fresh_start_has_a_row_for_each(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("- REQ-1: Login\n\n| # | Requirement | Status |\n|---|---|---|\n| 1 | REQ-2: Export data | Open |\n| 2 | REQ-3: Delete account | Open |\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Login", "Export data", "Delete account"])
+
+    # X2: what was written before the table began, on another line
+    def tracker_on_a_branch(self):
+        self.named("Login", "Export")
+        self.commit("2026-03-01", "base", files={"app.py": "a\n"}, table=False)
+        git(self.repo, "checkout", "-q", "-b", "add-tracker")
+        self.commit("2026-03-20", "add the tracker")
+        git(self.repo, "checkout", "-q", "main")
+        for day in ("2026-03-10", "2026-03-11", "2026-03-12"):
+            self.commit(day, f"unrelated on {day}", files={f"{day}.py": "1\n"}, table=False)
+        self.commit("2026-03-15", "row 1: the first row of the grid", files={"tests/test_grid.py": "1\n"}, table=False)
+        self.merge_commit("add-tracker", day="2026-03-21", message="Merge add-tracker")
+
+    def test_x2_work_from_before_the_table_is_not_off_its_plan(self):
+        self.tracker_on_a_branch()
+        found = self.found()
+        self.assertEqual((found["commits"], found["off_plan"]), (0, 0))
+        self.assertIsNone(focus.opener_line(self.plan(), today=datetime.date(2026, 3, 25)))
+
+    def test_x2_nor_does_it_give_a_row_a_test(self):
+        self.tracker_on_a_branch()
+        row = trace.rows_data(self.plan(), offline=True)[0]
+        self.assertEqual((row["tests"], row["named_by"]), ([], []))
+
+    def test_x2_what_came_after_it_counts(self):
+        self.tracker_on_a_branch()
+        self.commit("2026-03-22", "row 1: login", files={"login.py": "1\n", "tests/test_login.py": "1\n"}, table=False)
+        self.assertEqual(self.found()["on_plan"], 1)
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/test_login.py"])
+
+    def test_x2_a_commit_on_from_the_table_counts_whatever_its_date(self):
+        self.named("Login", "Export")
+        self.commit("2026-03-20", "add the tracker")
+        self.commit("2026-03-01", "row 1: written before, worded after", committer="2026-03-25", files={"tests/test_login.py": "1\n"}, table=False)
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/test_login.py"])
+        self.assertEqual(self.judged()["row 1: written before, worded after"]["class"], focus.ON)
+
+    def test_x2_a_line_of_work_merged_later_counts_from_when_it_was_written(self):
+        self.named("Login", "Export")
+        self.commit("2026-03-01", "base", files={"app.py": "a\n"}, table=False)
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.commit("2026-03-05", "Before the table", files={"f.py": "1\n"}, table=False)
+        self.commit("2026-03-25", "row 1: after the table", files={"tests/test_f.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.commit("2026-03-20", "add the tracker")
+        self.merge_commit("feature", day="2026-03-26", message="Merge feature")
+        found = self.judged()
+        self.assertNotIn("Before the table", found)
+        self.assertEqual(found["row 1: after the table"]["class"], focus.ON)
+
+    def test_x2_a_second_root_is_no_different(self):
+        self.named("Login", "Export")
+        self.commit("2026-03-01", "root A", files={"app.py": "a\n"}, table=False)
+        self.commit("2026-03-03", "older work", files={"older.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "--orphan", "tracker")
+        git(self.repo, "rm", "-q", "-r", "-f", ".")
+        self.write_plan()
+        self.commit("2026-03-10", "root B: the tracker")
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("--allow-unrelated-histories", "tracker", day="2026-03-11", message="Merge tracker")
+        self.commit("2026-03-20", "row 1: login", files={"login.py": "1\n"}, table=False)
+        found = self.found()
+        self.assertEqual((found["commits"], found["on_plan"]), (1, 1))
+
+    # X3: a table that arrived in a merge
+    def subtree(self):
+        self.plan_path.unlink()
+        self.named("Login", "Export")
+        self.commit("2026-03-01", "mono base", files={"app.py": "a\n"}, table=False)
+        git(self.repo, "checkout", "-q", "--orphan", "imported")
+        git(self.repo, "rm", "-q", "-r", "-f", ".")
+        self.write_plan()
+        imported = self.commit("2026-03-05", "project history")
+        git(self.repo, "checkout", "-q", "main")
+        git(self.repo, "merge", "-q", "-s", "ours", "--no-commit", "--allow-unrelated-histories", imported)
+        git(self.repo, "read-tree", "--prefix=proj/", "-u", imported)
+        git(self.repo, "commit", "-q", "-m", "Subtree import of proj", env={"GIT_AUTHOR_DATE": "2026-03-08T12:00:00", "GIT_COMMITTER_DATE": "2026-03-08T12:00:00"})
+        where = self.repo / "proj"
+        self.plan_path = where / ".gitdone.json"
+        self.commit("2026-03-10", "row 1: login with its test", files={"tests/test_login.py": "1\n"}, table=False, where=where)
+        self.commit("2026-03-12", "stray work", files={"code.py": "1\n"}, table=False, where=where)
+
+    def test_x3_it_began_at_that_merge(self):
+        self.subtree()
+        found = self.found()
+        self.assertEqual((found["commits"], found["on_plan"], found["off_plan"]), (2, 1, 1))
+        self.assertEqual(trace.rows_data(self.plan(), offline=True)[0]["tests"], ["tests/test_login.py"])
+        self.assertIn("off plan", focus.last_line(self.plan()))
+
+    def test_x3_and_a_later_commit_of_the_table_does_not_move_that(self):
+        self.subtree()
+        self.set_row(1, "Partial")
+        (self.repo / "proj" / "status-table.md").write_text(table_text(self.rows))
+        self.commit("2026-03-14", "mark it", files={"more.py": "1\n"}, table=False, where=self.repo / "proj")
+        self.assertEqual(set(self.judged()), {"row 1: login with its test", "stray work", "mark it"})
+
+    # X4: a number as a workstream's id
+    def test_x4_a_number_is_an_id(self):
+        self.write_table()
+        for keys in ({"workstreams": [{"id": 1, "name": "One", "rows": [1]}]}, {"workstreams": [{"id": 1, "rows": [1]}], "order": []}, {"workstreams": [{"id": 1, "rows": [1]}], "order": [1]}):
+            with self.subTest(str(keys)):
+                self.write_plan(**keys)
+                self.assertEqual(self.engine("render", "--write").returncode, 0)
+                done = self.engine("check", "--offline")
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+    def test_x4_an_order_that_names_nobody_is_what_it_always_was(self):
+        self.write_table()
+        self.write_plan(order=[1])
+        done = self.engine("check", "--offline")
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertNotIn("TypeError", done.stdout + done.stderr)
+
+    # X5, X15: punctuation is punctuation, in any script
+    def test_x5_what_is_punctuation_anywhere_is_aside(self):
+        for one, other in (("Sign\u2011in with SMS", "Sign-in with SMS"), ("Sign\u2010in", "Sign-in"), ("A\u2015B", "A B"), ("用户可以登录。", "用户可以登录"), ("甲，乙", "甲 乙"), ("（甲）", "甲"), ("¿Olvidó la contraseña?", "Olvidó la contraseña"),
+                           ("¡Hola!", "Hola"), ("„Quick“ search", "Quick search"), ("ماذا؟", "ماذا"), ("क्या।", "क्या"), ("Soft\u00adhyphen", "Soft-hyphen"), ("Zero\u200bwidth", "Zero-width"), ("\u200fRight", "Right"),
+                           ("• Bullet", "Bullet"), ("Brand™", "Brand"), ("Step #1", "Step 1"), ("Home -> Settings", "Home Settings"), ("🚀 Launch", "Launch"), ("Login => Home", "Login Home")):
+            with self.subTest(one):
+                self.assertEqual(requirements._said(one), requirements._said(other))
+
+    def test_x15_a_mark_that_changes_what_is_asked_is_not(self):
+        for one, other in (("status != 200", "status = 200"), ("x -1", "x 1"), ("x +1", "x 1"), ("x >= 1", "x > 1"), ("x < 1", "x > 1"), ("−5 degrees", "5 degrees"), ("A+", "A"), ("€5", "5")):
+            with self.subTest(one):
+                self.assertNotEqual(requirements._said(one), requirements._said(other))
+
+    # X6: a line with no words of its own
+    def test_x6_it_does_not_erase_the_words_a_table_gave(self):
+        self.named("Login with SMS", "Export data")
+        self.write_table()
+        self.spec("| ID | Title |\n|---|---|\n| REQ-1 | Login with SMS |\n| REQ-2 | Export data |\n\n### REQ-1\n\nDetails.\n\n- REQ-2: see the table above\n")
+        self.assertEqual(self.coverage()["without"], [])
+
+    def test_x6_and_a_line_with_words_fills_in_for_one_without(self):
+        self.named("Login with SMS")
+        self.write_table()
+        self.spec("### REQ-1\n\nDetails.\n\n| ID | Title |\n|---|---|\n| REQ-1 | Login with SMS |\n")
+        self.assertEqual(self.coverage()["without"], [])
+
+    # X7: the words about a limit, only when a limit took something
+    def test_x7_a_cut_older_than_what_was_asked_for_is_not_said(self):
+        self.commit("2026-02-01", "first")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20"), start=1):
+            self.move(i, "Partial", day)
+        self.commit("2026-02-25", "row 5: a small change", files={"a.py": "1\n"}, table=False)
+        with unittest.mock.patch.object(gitio, "MOST_BYTES_OF_HISTORY", len(table_text(self.rows)) * 3 + 10):
+            found = focus.data(self.plan(), revisions="HEAD~1..HEAD", today=TODAY)
+        self.assertEqual((found["commits"], found["newest_only"]), (1, False))
+        self.assertNotIn("as far as", focus.counts_words(found))
+
+    def test_x7_nor_with_only_the_tracker_s_commits_in_it(self):
+        self.commit("2026-02-01", "first")
+        for i, day in enumerate(("2026-02-05", "2026-02-10", "2026-02-15", "2026-02-20"), start=1):
+            self.move(i, "Partial", day, message="mark it")
+        with unittest.mock.patch.object(gitio, "MOST_BYTES_OF_HISTORY", len(table_text(self.rows)) * 3 + 10):
+            found = focus.data(self.plan(), revisions="HEAD~1..HEAD", today=TODAY)
+        self.assertEqual(focus.counts_words(found), "")
+
+    def renamed_many_times(self, count=12):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.set_row(1, "Partial")
+        self.commit("2026-03-02", "Login form", files={"login.py": "1\n"})
+        name = "status-table.md"
+        for i in range(count):
+            git(self.repo, "mv", name, f"table{i}.md")
+            name = f"table{i}.md"
+            self.write_plan(status_doc=name)
+            self.commit("2026-03-03", f"Rename {i}", table=False)
+
+    def test_x7_a_table_renamed_many_times_is_no_limit_reached(self):
+        self.renamed_many_times()
+        self.commit("2026-03-05", "row 1: work", files={"a.py": "1\n"}, table=False)
+        found = self.found()
+        self.assertEqual((found["commits"], found["on_plan"], found["newest_only"]), (2, 2, False))
+        self.assertEqual({c["subject"]: c["class"] for c in found["list"]}["Login form"], focus.ON)
+
+    def test_x7_with_no_time_for_its_old_names_what_needed_them_is_not_judged(self):
+        self.renamed_many_times()
+        reading = focus._Reading(self.plan(), None, datetime.date(2026, 3, 30))
+        commits = focus.read_commits(reading.repo, "HEAD")
+        reading.ends = time.monotonic() - 1
+        self.assertEqual(focus._moves(reading, commits), [])
+        self.assertTrue(reading.capped)
+
+    # X8: linear on what a spec holds
+    def test_x8_a_long_run_of_spaces_in_a_table_costs_what_it_weighs(self):
+        text = "- REQ-1: Aaa\n" + ("|---" + " " * 1990 + "x\n") * 600
+        started = time.monotonic()
+        self.assertEqual(self.parsed(text), [("REQ-1", "Aaa")])
+        self.assertLess(time.monotonic() - started, 3.0)
+
+    # X9: what is shown, and what is read
+    def test_x9_what_is_shown_of_a_subject_has_an_end(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Fix things " * 5000, files={"h.py": "1\n"}, table=False)
+        self.assertEqual(len(self.found()["list"][0]["subject"]), focus.LONGEST_SUBJECT)
+
+    def test_x9_and_so_does_what_is_read_of_a_message(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Long\n\n" + "words\n" * 100 + "row 2", files={"h.py": "1\n"}, table=False)
+        with unittest.mock.patch.object(focus, "LONGEST_MESSAGE", 50):
+            self.assertLessEqual(len(focus.read_commits(self.repo, "-1", "HEAD")[0]["message"]), 50)
+
+    # X10: tests in every language
+    def test_x10_a_test_is_what_is_not_data(self):
+        for path in ("test/runtests.jl", "test/Spec.hs", "test/Token.t.sol", "tests/foo.cxx", "tests/run.ps1", "tests/foo.zig", "spec/foo.cr", "tests/foo.nim", "tests/foo.ml", "test/foo.hpp", "tests/test_foo.py"):
+            with self.subTest(path):
+                self.assertTrue(trace._is_test(path))
+
+    # X11: a walk of all the history, when something asks
+    def test_x11_the_hook_walks_all_of_it_only_when_it_is_about_to_speak(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-05", "row 1: on plan", files={"a.py": "1\n"}, table=False)
+        with unittest.mock.patch.object(focus.history, "table_commits", wraps=history.table_commits) as walks:
+            self.assertIsNone(focus.last_line(self.plan()))
+        self.assertEqual([c.kwargs.get("topological", False) for c in walks.call_args_list], [False])
+
+    # X12: what git wrote about a merge
+    def test_x12_what_merge_log_lists_is_nobody_s_word(self):
+        self.named("Aaa", "Bbb")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "row-1-aaa")
+        self.commit("2026-03-02", "row 1: start", files={"r.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.commit("2026-03-03", "row 2: main work", files={"m1.py": "1\n"}, table=False)
+        self.commit("2026-03-04", "unrelated on main", files={"m2.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "row-1-aaa")
+        self.merge_commit("main", day="2026-03-05", message="Merge branch 'main' into row-1-aaa\n\n* main:\n  row 2: main work\n  unrelated on main\n")
+        self.assertNotEqual(self.judged()["unrelated on main"]["class"], focus.ON)
+
+    def test_x12_and_a_person_s_words_under_it_still_count(self):
+        self.named("Aaa", "Bbb")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.commit("2026-03-02", "A piece of it", files={"r.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("feature", day="2026-03-05", message="Merge branch 'feature'\n\nThis is row 2.\n\n* feature:\n  A piece of it\n")
+        self.assertEqual(self.judged()["A piece of it"]["rows"], [2])
+
+    # X13: a commit past the list of files, judged by both ends of it
+    def test_x13_all_docs_is_upkeep_however_many(self):
+        self.write_table()
+        self.commit("2026-03-01", "first")
+        self.commit("2026-03-05", "Import the manual", files={f"docs/{i}.md": "1\n" for i in range(5)}, table=False)
+        with unittest.mock.patch.object(focus, "MOST_FILES_IN_A_COMMIT", 2):
+            self.assertEqual(self.judged()["Import the manual"]["class"], focus.UPKEEP)
+
+    # X14: a column the heading names comes first
+    def test_x14_the_id_is_where_the_heading_says(self):
+        self.assertEqual(self.parsed("| Parent | ID | Title |\n|---|---|---|\n| REQ-90 | REQ-10 | Login |\n"), [("REQ-10", "Login")])
+        self.assertEqual(self.parsed("| Title | ID | Priority |\n|---|---|---|\n| SMS-2 login | REQ-9 | High |\n"), [("REQ-9", "SMS-2 login")])
+
+    # X17: a percent across groups says so with or without a date
+    def test_x17_the_portfolio_says_all_groups_without_a_date(self):
+        entry = {"project": "p", "rows": 3, "strict_rows": 1, "strict": 1 / 3, "weighted": 1 / 3, "likely": None, "all_groups": True, "next": None, "next_name": None, "gate": "pass", "contradicted": 0, "missing": 0}
+        self.assertIn("| p (all groups) |", portfolio.markdown([entry]))
+        self.assertNotIn("all groups", portfolio.markdown([{**entry, "all_groups": False}]))
+
+    # X18: a table that came back
+    def test_x18_a_table_brought_back_is_a_table_moved(self):
+        self.named("Aaa", "Bbb")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "rm", "-q", "status-table.md")
+        self.commit("2026-03-02", "drop the table", files={"b.py": "1\n"}, table=False)
+        self.set_row(1, "Partial")
+        self.commit("2026-03-05", "bring it back and move a row", files={"d.py": "1\n"})
+        self.assertEqual(self.judged()["bring it back and move a row"]["class"], focus.ON)
+
+    # X19: one id, one row
+    def test_x19_a_fresh_start_has_one_row_for_one_id(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("| ID | Title |\n|---|---|\n| REQ-1 | Login |\n\n- REQ-1: Login with SMS\n\n| Area | Ref |\n|---|---|\n| Billing | REQ-2 |\n\n- REQ-2: Export\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "spec.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Login", "Export"])
+
+    # What the same reader could only read
+    def test_two_drives_of_one_machine_have_no_path_between_them(self):
+        with unittest.mock.patch.object(os.path, "relpath", side_effect=ValueError("path is on mount 'D:'")):
+            self.assertEqual(focus._from_plan_folder("C:/code", "D:/plan")("a.py"), "a.py")
+
+    def test_when_git_cannot_say_nothing_is_called_off_plan(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-05", "Work", files={"a.py": "1\n"}, table=False)
+        with unittest.mock.patch.object(gitio, "objects", return_value=None):
+            found = self.found()
+        self.assertEqual((found["commits"], found["newest_only"]), (0, True))
 
 
 if __name__ == "__main__":

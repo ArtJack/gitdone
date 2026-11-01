@@ -220,12 +220,10 @@ class Plan:
         self.groups = [self._group(g) for g in _typed(data, "groups", list, [])]
         self.workstreams = _typed(data, "workstreams", list, [])
         for w in self.workstreams:
-            if not isinstance(w, dict) or not isinstance(w.get("id"), str):
-                raise PlanError(f"workstreams: each one needs an id, a word, got {w!r}")
-        self.order = _typed(data, "order", list, [w["id"] for w in self.workstreams])
-        for ws_id in self.order:
-            if not isinstance(ws_id, str):
-                raise PlanError(f"order: each one is a workstream's id, a word, got {ws_id!r}")
+            if not isinstance(w, dict) or not isinstance(w.get("id"), (str, int)):
+                raise PlanError(f"workstreams: each one needs an id, a word or a number, got {w!r}")
+            w["id"] = str(w["id"])
+        self.order = [str(ws_id) if isinstance(ws_id, int) else ws_id for ws_id in _typed(data, "order", list, [w["id"] for w in self.workstreams])]
         self._named_workstreams = {}
         for w in self.workstreams:
             self._named_workstreams.setdefault(w["id"], w)
@@ -401,7 +399,7 @@ class Plan:
         return [Group("all", "All", self.title, [d.n for d in table.domains], None)]
 
     def workstream(self, ws_id):
-        found = self._named_workstreams.get(ws_id)
+        found = self._named_workstreams.get(ws_id) if isinstance(ws_id, str) else None
         if found is None:
             raise PlanError(f"order names {ws_id!r}, and no workstream has that id")
         return found

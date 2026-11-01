@@ -9,15 +9,17 @@ from . import focus, gitio, render, report, requirements, table as tables
 
 BACKTICKED = re.compile(r"`([^`\s]+)`")
 MOST_TESTS_SHOWN = 3
-TEST_CODE = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".scala", ".groovy", ".swift", ".m", ".c", ".cc", ".cpp", ".cs", ".fs",
-             ".php", ".sh", ".bash", ".bats", ".ex", ".exs", ".erl", ".clj", ".lua", ".dart", ".r", ".pl", ".pm", ".feature", ".robot")
 NOT_TESTS = ("fixtures/*", "*/fixtures/*", "testdata/*", "*/testdata/*", "tests/data/*", "*/tests/data/*", "test/data/*", "*/test/data/*", "spec/data/*", "*/spec/data/*", "*/__snapshots__/*", "*/snapshots/*",
-             "__init__.py", "*/__init__.py", "conftest.py", "*/conftest.py")
+             "__init__.py", "*/__init__.py", "conftest.py", "*/conftest.py", "*.json", "*.yaml", "*.yml", "*.txt", "*.csv", "*.tsv", "*.xml", "*.html", "*.md", "*.rst", "*.snap", "*.png", "*.jpg", "*.jpeg", "*.gif",
+             "*.svg", "*.pdf", "*.bin", "*.dat", "*.log", "*.lock", "*.toml", "*.ini", "*.cfg", "*.zip", "*.gz", "*.tar", "*.parquet", "*.db", "*.sqlite", "*.wav", "*.mp3", "*.mp4", "*.ttf", "*.woff", "*.pem", "*.key", "*.crt")
 
 
 def _is_test(path):
-    """What a test's folder holds is not all tests. A test is code, and a fixture or a data file a commit touched says nothing about a row being tested."""
-    return focus.matches(path, focus.TESTS) and path.lower().endswith(TEST_CODE) and not focus.matches(path, NOT_TESTS)
+    """What a test's folder holds is not all tests: a fixture or a data file a commit touched says nothing about a row being tested. Any other file with a suffix is, since a
+    list of the languages tests are written in would leave some out, and with them a whole project.
+    """
+    name = path.rsplit("/", 1)[-1]
+    return focus.matches(path, focus.TESTS) and "." in name and not name.startswith(".") and not focus.matches(path, NOT_TESTS)
 
 
 def _cell(text):
@@ -38,18 +40,19 @@ def _files_by_commit(repo, shas):
     return out
 
 
-def _since_the_table(plan, repo):
-    """What keeps a walk to the table's first commit and what came after it, and None if it has none: `row 1` in a commit from before there was a row 1 was about something else."""
-    if focus._top(repo) != focus._top(plan.doc.parent):
-        return []
-    first = focus._first_table_commit(plan)
-    return [f"^{first}^@"] if first else None
-
-
-def _naming_commits(repo, known, limit):
-    """{row: [(sha, paths)]} from every commit in reach whose message names a row."""
+def _naming_commits(plan, repo, known):
+    """{row: [(sha, paths)]} from every commit since the table began whose message names a row: `row 1` in a commit from before there was a row 1 was about something else."""
     out = {}
-    for commit in focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD", *limit) if limit is not None else ():
+    if focus._top(repo) != focus._top(plan.doc.parent):  # the code is elsewhere, and has no history of the table to be before or after
+        commits = focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD")
+    else:
+        began = focus._began(plan)
+        if began is None:
+            return out
+        commits = focus.read_commits(repo, "-i", "--grep=row", "--no-merges", "HEAD", f"^{began[0]}^@")
+        kept = {sha for sha, _ in focus.written_since(repo, began, [(c["sha"], c["date"]) for c in commits])}
+        commits = [c for c in commits if c["sha"] in kept]
+    for commit in commits:
         for num in focus.named_rows(commit["message"], known):
             out.setdefault(num, []).append((commit["sha"], [path for path, _ in commit["files"]]))
     return out
@@ -82,7 +85,7 @@ def rows_data(plan, offline=False):
             if resolved.code == 0:
                 full[sha] = resolved.out.strip()
     files = _files_by_commit(repo, full.values())
-    naming = _naming_commits(repo, known, _since_the_table(plan, repo))
+    naming = _naming_commits(plan, repo, known)
     out = []
     for row in base:
         if row.get("prose"):
