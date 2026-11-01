@@ -13,7 +13,7 @@ import datetime
 import math
 import os
 
-from . import chart, gitio, history, render, table as tables
+from . import chart, evidence, gitio, history, render, table as tables
 from .plan import PlanError
 
 WINDOW = 28
@@ -69,17 +69,42 @@ def table_steps(plan, start=None, today=None, wanted=None):
     def stop(words):
         raise PlanError(f"git could not read the table's history: {words.strip()[:200]}")
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in read], failed=stop)
-    before, steps = None, []
+    before, steps, reached, strict = None, [], [], plan.strict_kind.name
     for (sha, date, _), text in zip(read, texts):
         if text is None:
             continue
         after, troubled = _kinds(plan, text, wanted)
         if not after or (troubled and before is not None and len(after) < len(before)):
             continue  # a table that lost rows to a broken line says nothing about them. One that still has them, with a typo or an old status, still says the rest
-        if before is not None and date >= from_day:
+        if before is not None and date >= from_day and date > born:  # on its first day a table is still saying where the project stands
             steps.append((sha, date, before, after))
+            nums = [n for n in after.keys() & before.keys() if after[n] == strict and before[n] != strict]
+            if nums:
+                reached.append((len(steps) - 1, nums, text))
         before = after
-    return steps, born, read_from
+    return _old_work_set_aside(plan, top, steps, reached, born), born, read_from
+
+
+def _old_work_set_aside(plan, top, steps, reached, born):
+    """A row that reaches the strict kind on commits from before the table began was done already. Saying so is where the project stood, and not how fast it moves, and a project
+    brought under a tracker a row at a time would otherwise get a date from its own bookkeeping.
+    """
+    cited = {}
+    for at, nums, text in reached:
+        rows = tables.parse(text.replace("\r\n", "\n"), plan.kinds).rows
+        for num in nums:
+            commits = [str(claim.value) for claim in evidence.release_claims(plan, rows[num].words()) if claim.kind in ("sha", "bare")]
+            if commits:
+                cited[(at, num)] = commits
+    if not cited:
+        return steps
+    wanted = sorted({commit for commits in cited.values() for commit in commits})
+    dates = {line[:7]: line.split()[-1] for line in gitio.git(top, "log", "--no-walk", "--ignore-missing", "--format=%H %as", "--stdin", stdin_text="\n".join(wanted) + "\n", timeout=60).out.splitlines()}
+    for (at, num), commits in cited.items():
+        if all(dates.get(commit[:7], born) < born for commit in commits):
+            sha, date, before, after = steps[at]
+            steps[at] = (sha, date, {**before, num: after[num]}, after)
+    return steps
 
 
 class Pace:

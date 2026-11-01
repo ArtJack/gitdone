@@ -148,7 +148,7 @@ def link(plan, row_number, ident):
         raise Refused(f"row {row_number} is not in {plan.doc.name}")
     if row.prose:
         raise Refused(f"row {row_number} sits in a prose domain; give that domain a table of rows first")
-    if ident in requirements.ID_IN_TEXT.findall(f"{row.name} {row.note}"):
+    if ident in evidence.requirements_held(row.name, row.note):
         return f"row {row_number} already names {ident}; nothing changed"
     note = f"{ident}. {row.note}".strip() if row.note.strip() else ident
     lines = text.split("\n")

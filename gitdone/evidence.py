@@ -21,6 +21,9 @@ Result = collections.namedtuple("Result", "state detail unanswerable", defaults=
 VERIFIED, UNVERIFIED, UNPROVEN, ABSENT, CONTRADICTED = "verified", "unverified", "unproven", "absent", "contradicted"
 
 # 64 digits is a SHA-256 repository's id. 18 digits is the most a number here can have: past 4,300 Python's own answer depends on its version.
+REQUIREMENT_ID = r"[A-Z][A-Z0-9]{0,19}-\d{1,9}(?:\.\d{1,9})*"
+REQUIREMENT_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){REQUIREMENT_ID}(?![0-9A-Za-z-])")
+LEADING_REQUIREMENTS = re.compile(rf"^\s*((?:{REQUIREMENT_ID}(?![0-9A-Za-z-])[\s,;/&.:]*)+)")
 NAMED_EVIDENCE = re.compile(r"\s*\(\s*(?:`?[0-9a-f]{7,64}`?|PR\s*#?\s*\d+|pull request\s*#?\s*\d+)\s*\)", re.I)
 QUOTED_SHA = re.compile(r"`([0-9a-f]{7,64})`")
 BARE_SHA = re.compile(r"(?<![\w/.-])([0-9a-f]{7,64})(?![\w/-])")
@@ -237,6 +240,15 @@ def branch_names(plan, row):
             if item:
                 names.append(plan.branch_aliases.get(item, item))
     return names
+
+
+
+def requirements_held(name, note):
+    """The requirements a row answers to: any id in its name, and those its note starts with, which is where `link` and `init` write them. One later in a note may only be a
+    mention, and a mention must not close a gap: `depends on REQ-3`.
+    """
+    leading = LEADING_REQUIREMENTS.match(note)
+    return REQUIREMENT_IN_TEXT.findall(name) + (REQUIREMENT_IN_TEXT.findall(leading.group(1)) if leading else [])
 
 
 class Verifier:

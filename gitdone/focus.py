@@ -37,14 +37,18 @@ PULL_REQUEST = re.compile(r"(?:\(#|pull request #)(\d{1,9})\b", re.I)
 MERGE_INTO = re.compile(r"^Merged? (.+?) into \S+(.*)$")
 MERGE_REQUEST = re.compile(r"See merge request \S*!(\d{1,9})\b")
 REVERT_SUBJECT = re.compile(r"^revert\b", re.I)
-UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^bump\b", re.I)
+UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^(?:bump|upgrade|fix|fixes|fixed)\b", re.I)
+ISSUE_IN_A_NOTE = re.compile(r"\bissue\s*#(\d{1,9})\b", re.I)
+ISSUE_IN_A_MESSAGE = re.compile(r"#(\d{1,9})\b")
+MERGED_BRANCH = re.compile(r"^Merge (?:remote-tracking )?branch '(?:origin/)?([^']+)'|^Merge pull request #\d+ from [^/\s]+/(\S+)")
 COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 NUMSTAT = re.compile(r"^(\d+|-)\t(\d+|-)\t(.*)$", re.S)
 TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "e2e/*", "cypress/*", "*/tests/*", "*/test/*", "*/spec/*", "*/specs/*", "*/__tests__/*", "*/e2e/*", "*/cypress/*", "*Tests/*", "*Test/*",
          "test_*", "*/test_*", "tests.*", "*/tests.*", "*_test.*", "*_spec.*", "*.test.*", "*.spec.*", "*.cy.*", "*Test.*", "*Tests.*")
 UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", "*/.github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
                         ".pre-commit-config.yaml", "LICENSE*", "*.lock", "package-lock.json", "pnpm-lock.yaml", "go.sum", "go.mod", "Makefile", "Dockerfile*",
-                        "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml")
+                        "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml", "pom.xml", "build.gradle*",
+                        "settings.gradle*", "gradlew*", "mvnw*", ".mvn/*", "*/.mvn/*", "gradle/*", "*/gradle/*", "Gemfile", "composer.json", ".golangci.y*ml", ".eslintrc*", ".prettierrc*")
 SOURCE_ROOTS = {"src", "lib", "app", "apps", "pkg", "packages", "services", "internal", "cmd"}
 FEW_WORDS = frozenset("a an and are as at be by for from in into is it its of on or that the this to with add adds added adding update updates "
                       "updated updating fix fixes fixed fixing make makes made making use uses used using change changes changed changing "
@@ -216,7 +220,14 @@ class _Reading:
             for word in words:
                 self.by_word.setdefault(word, []).append(num)
         self.cited, self.pull_requests, self.merge_requests = [], {}, {}
+        self.requirements, self.issues, self.branches = {}, {}, {}
         for row in rows:
+            for ident in evidence.requirements_held(row.name, row.note):
+                self.requirements.setdefault(ident, set()).add(row.num)
+            for number in ISSUE_IN_A_NOTE.findall(row.note):
+                self.issues.setdefault(int(number), set()).add(row.num)
+            for branch in evidence.NOTE_BRANCH.findall(row.note):
+                self.branches.setdefault(branch, set()).add(row.num)
             for claim in evidence.release_claims(plan, row.words()):
                 if claim.kind in ("sha", "bare"):
                     self.cited.append((str(claim.value), row.num))
@@ -311,7 +322,10 @@ class _Reading:
         """The rows a commit is tied to by someone's word: its message, or a row's citation."""
         named = named_rows(commit["message"], self.known)
         if named:
-            return named, "named in the message"
+            return named, NAMED
+        held = {n for ident in evidence.REQUIREMENT_IN_TEXT.findall(commit["message"]) for n in self.requirements.get(ident, ())}
+        if held:
+            return held, HOLDS_ITS_REQUIREMENT
         first_line = commit["message"].split("\n", 1)[0]
         if self.workstream_word:
             said = self.workstream_word.match(first_line)
@@ -324,7 +338,18 @@ class _Reading:
             for number in pattern.findall(commit["message"] if table is self.merge_requests else first_line):
                 if int(number) in table:
                     return set(table[int(number)]), "its pull request is cited as evidence"
+        for number in ISSUE_IN_A_MESSAGE.findall(commit["message"]) if self.issues else ():
+            if int(number) in self.issues:
+                return set(self.issues[int(number)]), "it names the issue in the row's note"
         return set(), ""
+
+    def looks_like(self, words, date):
+        """The row that shares the most of these words, two of them or a row's only one, if it could still have been advanced on that day."""
+        shared = {}
+        for word in words:
+            for num in self.by_word.get(word, ()):
+                shared[num] = shared.get(num, 0) + 1
+        return next((n for n in sorted(shared, key=lambda n: (-shared[n], n)) if (shared[n] >= 2 or len(self.words[n]) == 1) and self._in_reach(n, date)), None)
 
     def _off_plan_reason(self, commit):
         single, ranges = _row_numbers(commit["message"])
@@ -345,10 +370,11 @@ class _Reading:
         if not rows and commit["sha"] in self.moved_by:
             rows, because = set(self.moved_by[commit["sha"]]), "it moved the row in the table"
         if rows:
-            if because == "named in the message" and not any(self._in_reach(n, commit["date"]) for n in rows):
+            cites_it = any(commit["sha"].startswith(value) for value, num in self.cited if num in rows)  # a clock ahead of this one, or a table not yet committed, is not a row already finished
+            if because in (NAMED, HOLDS_ITS_REQUIREMENT) and not cites_it and not any(self._in_reach(n, commit["date"]) for n in rows):
                 return UNCLEAR, rows, f"row {min(rows)} had finished by then"
             return ON, rows, because
-        if inherited and inherited[1] == MERGED_FOR_THE_ROW:
+        if inherited and inherited[1] in (MERGED_FOR_THE_ROW, CITED_BRANCH):
             if any(self._in_reach(n, commit["date"]) for n in inherited[0]):
                 return ON, set(inherited[0]), inherited[1]
             return UNCLEAR, set(inherited[0]), f"row {min(inherited[0])} had finished by then"
@@ -362,11 +388,7 @@ class _Reading:
                 return ON, reachable, "the plan ties its files to the row"
         if inherited:
             return UNCLEAR, set(inherited[0]), inherited[1]
-        shared = {}
-        for word in words_of(subject):
-            for num in self.by_word.get(word, ()):
-                shared[num] = shared.get(num, 0) + 1
-        best = next((n for n in sorted(shared, key=lambda n: (-shared[n], n)) if (shared[n] >= 2 or len(self.words[n]) == 1) and self._in_reach(n, commit["date"])), None)
+        best = self.looks_like(words_of(subject), commit["date"])
         if best is not None:
             return UNCLEAR, {best}, f"it looks like row {best}, by its words"
         if UPKEEP_SUBJECT.match(subject):
@@ -376,7 +398,10 @@ class _Reading:
         return OFF, set(), self._off_plan_reason(commit)
 
 
+NAMED = "named in the message"
+HOLDS_ITS_REQUIREMENT = "it names a requirement the row holds"
 MERGED_FOR_THE_ROW = "its merge is tied to the row"
+CITED_BRANCH = "a row cites its branch"
 BRANCH_FOR_THE_ROW = "its branch is named for the row"
 
 
@@ -413,17 +438,25 @@ def _inherited(reading, commits):
             commits = commits[:at]
             break
         rows, _ = reading.direct_links({**commit, "message": _said_by_a_merge(commit["message"])})
+        merged = MERGED_BRANCH.match(commit["message"])
+        branch = (merged.group(1) or merged.group(2)) if merged else ""
+        rows, why = rows or reading.branches.get(branch), MERGED_FOR_THE_ROW
+        if not rows and branch and branch != reading.plan.default_branch:  # only by its words: unclear, and said so
+            best = reading.looks_like(words_of(branch), commit["date"])
+            rows, why = ({best}, BRANCH_FOR_THE_ROW) if best is not None else (None, None)
         if rows:
             inside = gitio.git(reading.repo, "rev-list", f"{commit['parents'][0]}..{commit['sha']}")
             for sha in inside.out.split():
-                out.setdefault(sha, (rows, MERGED_FOR_THE_ROW))
+                out.setdefault(sha, (rows, why))
     branch = gitio.git(reading.repo, "symbolic-ref", "--quiet", "--short", "HEAD").out.strip() or os.environ.get("GITHUB_HEAD_REF", "")
-    rows = named_rows(branch, reading.known)
+    rows, why = reading.branches.get(branch), CITED_BRANCH
+    if not rows:
+        rows, why = named_rows(branch, reading.known), BRANCH_FOR_THE_ROW
     if rows and branch != reading.plan.default_branch:
         for ref in (f"refs/heads/{reading.plan.default_branch}", f"refs/remotes/origin/{reading.plan.default_branch}"):
             if gitio.git(reading.repo, "rev-parse", "--verify", "--quiet", ref).code == 0:
                 for sha in gitio.git(reading.repo, "rev-list", f"{ref}..HEAD").out.split():
-                    out.setdefault(sha, (rows, BRANCH_FOR_THE_ROW))
+                    out.setdefault(sha, (rows, why))
                 break
     return commits, out
 
@@ -592,7 +625,7 @@ def data(plan, days=WINDOW, today=None, revisions=None):
     for c in tally[OFF]:
         per_area[c["area"]] = per_area.get(c["area"], 0) + c["lines"]
     following = render.opener_data(plan, reading.table)["next"]
-    return {"days": None if revisions else days, "since": None if revisions else start.isoformat(), "revisions": revisions, "commits": len(counted),
+    return {"days": None if revisions else days, "since": None if revisions else start.isoformat(), "revisions": revisions, "folder": gitio.git(reading.repo, "rev-parse", "--show-prefix").out.strip(), "commits": len(counted),
             "on_plan": len(tally[ON]), "unclear": len(tally[UNCLEAR]), "upkeep": len(tally[UPKEEP]), "off_plan": len(tally[OFF]),
             "tracker_only": len(judged) - len(counted), "shallow": forecast._is_shallow(reading.repo), "newest_only": reading.capped, "plan_problems": list(plan.signal_problems),
             "lines": {"on_plan": sum(c["lines"] for c in tally[ON]), "unclear": sum(c["lines"] for c in tally[UNCLEAR]), "upkeep": sum(c["lines"] for c in tally[UPKEEP]), "off_plan": sum(c["lines"] for c in tally[OFF])},
@@ -628,7 +661,7 @@ def text(found, show_all=False):
     shallow += [TOO_MUCH] if found["newest_only"] and found["commits"] else []
     shallow += [f"⚠ {render.one_line(words)}" for words in found["plan_problems"]]
     if not found["commits"]:
-        said = NOTHING_READ if found["newest_only"] else "no commits but the tracker's own since the table began"
+        said = NOTHING_READ if found["newest_only"] else f"no commits{' in ' + render.one_line(found['folder']) if found.get('folder') else ''} but the tracker's own since the table began"
         return "\n".join(shallow + [line for line in (f"{span}: {said}.", _next_words(found)) if line])
     lines_in_all = sum(found["lines"].values())
     L = shallow + [f"{span}: {found['commits']} commit{'' if found['commits'] == 1 else 's'}, {_lines(lines_in_all)} changed."]

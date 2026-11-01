@@ -87,7 +87,7 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 
 ## `focus --json`
 
-`days`, `since`, `revisions`, `commits`, `on_plan`, `unclear`, `upkeep`, `off_plan`, `tracker_only`, `shallow`, `newest_only` (only the newest part of the history was looked at, and the rest is not in these numbers), `plan_problems`, `lines` (the same four, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `lines`), `next`, and
+`days`, `since`, `revisions`, `folder` (the plan's folder, in a repository's subfolder), `commits`, `on_plan`, `unclear`, `upkeep`, `off_plan`, `tracker_only`, `shallow`, `newest_only` (only the newest part of the history was looked at, and the rest is not in these numbers), `plan_problems`, `lines` (the same four, in changed lines), `rows` (each `row`, `commits`), `areas` (each `area`, `lines`), `next`, and
 `list`: every commit with `commit`, `date`, `subject`, `class` (`on plan`, `unclear`, `upkeep`, `off plan`, `tracker`), `rows`, `because`, `lines`, `area`.
 
 ## The rest
@@ -99,5 +99,5 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.
 - **`doctor --json`:** `exit_code` and `items`, each with `state` (`ok`, `warn`, `fail`), `name`, `detail`.
 - **`chart --json`:** a list of `date`, `scope`, `strict`, `weighted`, `left`, in rows. `chart --csv` has the first four. With `--burndown`: `points` and `forecast`, which is what `eta --json` gives, and as CSV `date`, `scope`, `left_all_work`, `left_strict`.
-- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `all_groups`, `next`, `gate`, or `error`.
+- **`portfolio --json`:** a list of projects with `rows`, `strict_rows`, `strict`, `weighted`, `likely`, `likely_words`, `all_groups`, `next`, `gate`, or `error`.
 - **`badge`:** prints the JSON a [shields.io endpoint](https://shields.io/badges/endpoint-badge) reads.
