@@ -46,6 +46,7 @@ class TheDemo(unittest.TestCase):
         self.assertIn(demo().view_block(self.lines.view), block)
         self.assertIn("What is left", block)
         self.assertIn("Sign-in", block)
+        self.assertIn("Live 2026-03-04", block)  # the session's own day, whatever day it is run: a stamp is in the id of every commit after it
 
     def test_the_recording_says_the_same(self):
         svg = (ROOT / "docs" / "img" / "demo.svg").read_text(encoding="utf-8")
