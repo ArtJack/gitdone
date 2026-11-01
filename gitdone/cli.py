@@ -369,6 +369,8 @@ def _init_sections(args):
             text = open(args.from_checklist, encoding="utf-8").read()
         except OSError as err:
             raise PlanError(f"cannot read {args.from_checklist}: {err.strerror}")
+        except UnicodeDecodeError:
+            raise PlanError(f"{args.from_checklist} is not UTF-8")
         sections = scaffold.sections_from_checklist(text)
         if not sections:
             raise PlanError(f"{args.from_checklist} holds no `- [ ]` items and no `REQ-1: words` lines")
@@ -524,7 +526,7 @@ def cmd_matrix(args):
     from . import trace
     plan = _plan(args)
     if args.json:
-        _print_json(trace.data(plan, offline=args.offline))
+        _write_or_print(args.out, json.dumps(trace.data(plan, offline=args.offline), indent=2, ensure_ascii=False) + "\n")
     else:
         _write_or_print(args.out, trace.markdown(plan, offline=args.offline))
     return 0

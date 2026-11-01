@@ -2497,7 +2497,7 @@ class WhatATableInASpecSays(Case):
                 self.assertEqual(self.parsed(text), wanted)
 
     def test_any_of_these_headings_holds_ids(self):
-        for heading in ("ID", "Id", "Req ID", "Req. ID", "ReqID", "Requirement ID", "Identifier", "Requirement", "User Story", "Story", "Ref", "Key", "#", "No."):
+        for heading in ("ID", "Id", "Req ID", "Req. ID", "ReqID", "Requirement ID", "Identifier", "Requirement", "User Story", "Story", "Ref", "#", "No."):
             with self.subTest(heading):
                 self.assertEqual(self.parsed(f"| Thing | {heading} | Other |\n|---|---|---|\n| Sign in | REQ-2 | Delete it |\n")[0][0], "REQ-2")
 
@@ -2720,6 +2720,280 @@ class TheSixthAttack(Case):
         self.commit("2026-03-01", "adopt")
         rows = {r["row"]: r["tests"] for r in trace.rows_data(self.plan(), offline=True)}
         self.assertEqual((rows[1], rows[2]), ([], ["tests/test_recent.py"]))
+
+
+class TheSeventhReader(Case):
+    """A reader who used it as a new user would, on realistic projects, and counted only what misleads in ordinary use: Z1 to Z4, and what was cheap beside them."""
+
+    named, set_row, found, judged, merge_commit = TheFourthAttack.named, TheFourthAttack.set_row, TheFourthAttack.found, TheFourthAttack.judged, TheFourthAttack.merge_commit
+
+    def note(self, num, note):
+        table = self.repo / "status-table.md"
+        lines = table.read_text().split("\n")
+        at = next(i for i, line in enumerate(lines) if line.startswith(f"| {num} |"))
+        cells = lines[at].split("|")
+        lines[at] = "|".join(cells[:4] + [f" {note} ", ""])
+        table.write_text("\n".join(lines))
+
+    def coverage(self, spec):
+        (self.repo / "spec.md").write_text(spec)
+        self.write_plan(requirements=["spec.md"])
+        return requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+
+    # Z1: a note that mentions a requirement does not hold it
+    def test_z1_a_mention_in_a_note_closes_nothing(self):
+        self.named("Admin screen", "Export")
+        self.write_table()
+        self.note(1, "depends on REQ-3, see REQ-4 for logging")
+        found = self.coverage("- REQ-3: Refunds\n- REQ-4: Audit log\n")
+        self.assertEqual([item.ident for item in found["without"]], ["REQ-3", "REQ-4"])
+
+    def test_z1_nor_does_it_hold_a_row_back_from_being_finished(self):
+        self.named("Portal", "Admin screen")
+        self.write_table()
+        self.note(1, "REQ-2")
+        self.note(2, "see REQ-2")
+        found = self.coverage("- REQ-2: Portal\n")
+        self.assertEqual([[r.num for r in rows] for _, rows in found["items"]], [[1]])
+
+    def test_z1_a_note_that_starts_with_it_holds_it_and_so_does_a_name(self):
+        self.named("Admin screen", "Refunds (REQ-5)")
+        self.write_table()
+        self.note(1, "REQ-3, REQ-4: both of these")
+        found = self.coverage("- REQ-3: One\n- REQ-4: Two\n- REQ-5: Three\n")
+        self.assertEqual(found["without"], [])
+
+    def test_z1_link_writes_where_it_is_read(self):
+        self.named("Admin screen")
+        self.write_table()
+        self.note(1, "depends on REQ-3")
+        self.coverage("- REQ-3: Refunds\n")
+        self.assertIn("answers to REQ-3", self.engine("link", "1", "REQ-3").stdout)
+        self.assertEqual(requirements.coverage(self.plan(), tables.load_clean(self.plan()))["without"], [])
+        self.assertIn("already names", self.engine("link", "1", "REQ-3").stdout)
+
+    # Z2: what the table ties to a row ties a commit
+    def test_z2_a_message_that_names_a_requirement_the_row_holds(self):
+        self.named("Sign in", "Billing", "Export")
+        self.write_table()
+        self.note(1, "REQ-1")
+        self.note(2, "REQ-2")
+        self.commit("2026-03-01", "start", table=False)
+        self.commit("2026-03-02", "REQ-1: send the link", files={"a.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Webhook handling (REQ-2)", files={"b.py": "1\n"}, table=False)
+        self.commit("2026-03-04", "Mentions REQ-9, which nothing holds", files={"c.py": "1\n"}, table=False)
+        found = self.judged()
+        self.assertEqual((found["REQ-1: send the link"]["class"], found["REQ-1: send the link"]["rows"]), (focus.ON, [1]))
+        self.assertEqual(found["Webhook handling (REQ-2)"]["rows"], [2])
+        self.assertEqual(found["Mentions REQ-9, which nothing holds"]["class"], focus.OFF)
+
+    def test_z2_a_message_that_names_the_issue_in_a_row_s_note(self):
+        self.named("Export to PDF", "Billing")
+        self.write_table()
+        self.note(1, "issue #12")
+        self.commit("2026-03-01", "start", table=False)
+        self.commit("2026-03-02", "PDF renderer, closes #12", files={"a.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Something else, closes #13", files={"b.py": "1\n"}, table=False)
+        found = self.judged()
+        self.assertEqual(found["PDF renderer, closes #12"]["rows"], [1])
+        self.assertEqual(found["Something else, closes #13"]["class"], focus.OFF)
+
+    def test_z2_a_merge_of_a_branch_a_row_cites(self):
+        self.named("Export", "Sign up")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "signup")
+        self.commit("2026-03-02", "Registration form", files={"form.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.note(2, "*(Partial 2026-03-03: branch `signup`)*")
+        self.commit("2026-03-03", "row 2 is built", table=False)
+        self.merge_commit("signup", day="2026-03-04", message="Merge branch 'signup'")
+        found = self.judged()["Registration form"]
+        self.assertEqual((found["class"], found["rows"]), (focus.ON, [2]))
+
+    def test_z2_on_a_branch_a_row_cites(self):
+        self.named("Export", "Sign up")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "signup")
+        self.note(2, "*(Partial 2026-03-02: branch `signup`)*")
+        self.commit("2026-03-02", "row 2 is begun", table=False)
+        self.commit("2026-03-03", "Registration form", files={"form.py": "1\n"}, table=False)
+        found = self.judged()["Registration form"]
+        self.assertEqual((found["class"], found["because"]), (focus.ON, focus.CITED_BRANCH))
+
+    # Z3: what a table says of the past is not pace
+    def days_of_marking(self, cite):
+        self.named(*[f"Module {i}" for i in range(1, 7)])
+        old = self.commit("2026-01-05", "old work", files={"old.py": "1\n"}, table=False)
+        self.write_table()
+        self.commit("2026-02-01", "the tracker")
+        for num, day in enumerate(("2026-02-10", "2026-02-15", "2026-02-20", "2026-02-25"), start=1):
+            sha = old if cite == "old" else self.commit(day, f"row {num}: work", files={f"m{num}.py": "1\n"}, table=False)
+            self.write_table()
+            self.rows[num] = (self.rows[num][0], "Live")
+            self.write_table()
+            for n in range(1, num + 1):
+                self.note(n, f"`{sha if n == num else (old if cite == 'old' else git(self.repo, 'log', '-1', f'--grep=row {n}:', '--format=%H'))}`")
+            self.commit(day, f"row {num} is live", table=False)
+
+    def test_z3_a_row_moved_on_commits_from_before_the_table_is_not_pace(self):
+        self.days_of_marking("old")
+        pace = forecast.read_pace(self.plan(), today=TODAY)
+        self.assertEqual((pace.moving_days(), sum(pace.live)), (0, 0))
+        self.assertEqual(self.data()["state"], "stalled")
+
+    def test_z3_a_row_moved_on_work_done_since_is(self):
+        self.days_of_marking("new")
+        pace = forecast.read_pace(self.plan(), today=TODAY)
+        self.assertEqual((pace.moving_days(), sum(pace.live)), (4, 4))
+        self.assertEqual(self.data()["state"], "dated")
+
+    def test_z3_the_table_s_first_day_is_where_the_project_stood(self):
+        self.write_table()
+        self.commit("2026-02-01", "the tracker")
+        for num in (1, 2, 3):
+            self.move(num, "Partial", "2026-02-01")
+        self.rows[11] = ("A new row", "Not built")
+        self.commit("2026-02-01", "one more")
+        pace = forecast.read_pace(self.plan(), today=TODAY)
+        self.assertEqual((pace.moving_days(), pace.added), (0, 0))
+
+    def test_z3_the_chart_is_still_the_record(self):
+        self.days_of_marking("old")
+        self.assertEqual(chart.points(self.plan(), today=TODAY.isoformat())[-1]["strict"], 4)
+
+    # Z4: the rest of a requirements document
+    SRS = ("## Functional requirements\n| ID | Requirement | Priority |\n|---|---|---|\n| FR-1 | Track a parcel by its number | High |\n| FR-2 | Show the delivery ETA | High |\n\n"
+           "## Interfaces\n| Interface | Protocol |\n|---|---|\n| IF-1 | REST over HTTPS |\n\n## Error codes\n| Code | Meaning |\n|---|---|\n| ERR-1 | Unknown parcel number |\n")
+
+    def parsed(self, text):
+        return [(item.ident, item.words) for item in requirements.parse(text, "spec.md")]
+
+    def test_z4_its_other_tables_are_not_requirements(self):
+        self.assertEqual(self.parsed(self.SRS), [("FR-1", "Track a parcel by its number"), ("FR-2", "Show the delivery ETA")])
+
+    def test_z4_they_are_said(self):
+        passed = []
+        requirements.parse(self.SRS, "spec.md", None, passed)
+        self.assertEqual([item.ident for item in passed], ["IF-1", "ERR-1"])
+
+    def test_z4_a_fresh_start_agrees(self):
+        self.plan_path.unlink()
+        (self.repo / "SRS.md").write_text(self.SRS)
+        self.assertEqual(self.engine("init", "--from-checklist", "SRS.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Track a parcel by its number", "Show the delivery ETA"])
+
+    def test_z4_a_first_column_of_the_same_kind_is_still_read(self):
+        self.assertEqual(self.parsed("- REQ-1: One\n\n| Thing | Words |\n|---|---|\n| REQ-2 | Two |\n| OTHER-3 | Three |\n"), [("REQ-1", "One"), ("REQ-2", "Two")])
+
+    def test_z4_and_with_nothing_plainer_a_first_column_is_its_ids(self):
+        self.assertEqual(self.parsed("| Interface | Protocol |\n|---|---|\n| IF-1 | REST over HTTPS |\n"), [("IF-1", "REST over HTTPS")])
+
+    def test_z4_sections_that_are_not_requirements(self):
+        for heading in ("Open questions", "Risks", "Assumptions", "Glossary", "Decisions", "Out of scope", "Non-goals", "Revision history", "References", "Appendix A"):
+            with self.subTest(heading):
+                text = f"## Requirements\n\n- REQ-1: Sign in\n\n## {heading}\n\n- Q-1: Do we support IMAP?\n- [ ] A plain item\n\n### Deeper\n\n- Q-2: Still in it\n\n## More requirements\n\n- REQ-2: Export\n"
+                self.assertEqual(self.parsed(text), [("REQ-1", "Sign in"), ("REQ-2", "Export")])
+
+    def test_z4_a_requirement_about_a_risk_is_a_requirement(self):
+        self.assertEqual(self.parsed("### REQ-1 Risk score for each parcel\n\n## Risk scoring\n\n- REQ-2: Score it\n")[:1], [("REQ-1", "Risk score for each parcel")])
+
+    # What was cheap beside them
+    def test_a_mixed_spec_keeps_the_lines_of_a_kind_it_defines(self):
+        self.assertEqual(self.parsed("REQ-1: Sign in\nREQ-2 - Search\nREQ-3: Export\n- REQ-4 Billing\n1. REQ-5 Reports\n"),
+                         [("REQ-1", "Sign in"), ("REQ-2", "Search"), ("REQ-3", "Export"), ("REQ-4", "Billing"), ("REQ-5", "Reports")])
+
+    def test_but_a_sentence_on_its_own_is_still_a_sentence(self):
+        self.assertEqual(self.parsed("- BUG-12 was fixed in the last release\n"), [])
+        self.assertEqual(self.parsed("REQ-1: Sign in\n- BUG-12 was fixed in the last release\n"), [("REQ-1", "Sign in")])
+
+    def test_a_line_that_could_be_prose_does_not_replace_a_definition(self):
+        self.assertEqual(self.parsed("REQ-1: Sign in\n")[0], ("REQ-1", "Sign in"))
+        self.named("Sign in")
+        self.write_table()
+        self.assertEqual(self.coverage("REQ-1: Sign in\n- REQ-1 was written by Ana\n")["without"], [])
+
+    def test_a_to_do_item_can_say_which_requirement_it_is(self):
+        self.named("Sign in")
+        self.write_table()
+        (self.repo / "ROADMAP.md").write_text("- [ ] Sign in (REQ-1)\n")
+        (self.repo / "spec.md").write_text("- REQ-1: Sign in\n")
+        self.write_plan(requirements=["spec.md", "ROADMAP.md"])
+        found = requirements.coverage(self.plan(), tables.load_clean(self.plan()))
+        self.assertEqual(([item.ident for item, _ in found["items"]], found["without"]), (["REQ-1"], []))
+
+    def test_a_struck_item_is_not_in_scope(self):
+        self.assertEqual(self.parsed("- [ ] Sign in\n- [x] ~~Gift cards~~\n"), [(None, "Sign in")])
+        self.plan_path.unlink()
+        (self.repo / "ROADMAP.md").write_text("- [ ] Sign in\n- [x] ~~Gift cards~~\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "ROADMAP.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Sign in"])
+
+    def test_a_merge_named_by_a_row_s_words_is_unclear(self):
+        self.named("CSV export", "Search")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        git(self.repo, "checkout", "-q", "-b", "feature/csv-export")
+        self.commit("2026-03-02", "Add the writer", files={"w.py": "1\n"}, table=False)
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("feature/csv-export", day="2026-03-03", message="Merge branch 'feature/csv-export'")
+        found = self.judged()["Add the writer"]
+        self.assertEqual((found["class"], found["rows"]), (focus.UNCLEAR, [1]))
+
+    def test_a_small_fix_or_upgrade_is_upkeep_by_its_subject(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-02", "Fix crash on empty file", files={"f.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Upgrade the HTTP client", files={"h.py": "1\n"}, table=False)
+        found = self.judged()
+        self.assertEqual((found["Fix crash on empty file"]["class"], found["Upgrade the HTTP client"]["class"]), (focus.UPKEEP, focus.UPKEEP))
+
+    def test_more_project_files(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-02", "Bring in Spring", files={"pom.xml": "<p/>\n", "mvnw": "x\n", ".mvn/wrapper/a.properties": "x\n", "svc/build.gradle.kts": "x\n", ".golangci.yml": "x\n"}, table=False)
+        self.assertEqual(self.judged()["Bring in Spring"]["class"], focus.UPKEEP)
+
+    def test_the_portfolio_says_which_date(self):
+        entry = {"project": "p", "rows": 3, "strict_rows": 1, "strict": 1 / 3, "weighted": 1 / 3, "likely": "2026-04-01", "likely_words": "Apr 9 on Live rows alone, or Apr 1 with all work", "all_groups": False, "next": None, "next_name": None, "gate": "pass", "contradicted": 0, "missing": 0}
+        self.assertIn("Apr 9 on Live rows alone, or Apr 1 with all work", portfolio.markdown([entry]))
+
+    def test_no_commits_in_a_folder_names_the_folder(self):
+        (self.repo / "docs").mkdir()
+        (self.repo / "docs" / "status-table.md").write_text(table_text(self.rows))
+        self.plan_path.unlink()
+        self.plan_path = self.repo / "docs" / ".gitdone.json"
+        self.write_plan()
+        self.commit("2026-03-01", "track", table=False)
+        self.commit("2026-03-02", "Add a cache", files={"src/a.py": "1\n"}, table=False)
+        self.assertIn("no commits in docs/ but the tracker's own", focus.text(self.found()))
+
+    def test_a_spec_that_is_not_utf_8_is_said_at_init(self):
+        self.plan_path.unlink()
+        (self.repo / "SPEC.md").write_bytes(b"REQ-1: R\xe9sum\xe9 export\n")
+        done = self.engine("init", "--from-checklist", "SPEC.md")
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("is not UTF-8", done.stderr + done.stdout)
+        self.assertNotIn("UnicodeDecodeError", done.stderr + done.stdout)
+
+    def test_a_row_that_cites_a_commit_had_not_finished_before_it(self):
+        self.named("A", "B")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        sha = self.commit("2026-03-10", "row 1", committer="2026-03-10", files={"r.py": "1\n"}, table=False)
+        self.set_row(1, "Live")
+        self.write_table()
+        self.note(1, f"`{sha}`")
+        self.commit("2026-03-09", "row 1 live", table=False)
+        self.assertEqual(self.judged()["row 1"]["class"], focus.ON)
+
+    def test_the_matrix_as_json_goes_where_it_is_told(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        done = self.engine("matrix", "--json", "--offline", "--out", "m.json")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("rows", json.loads((self.repo / "m.json").read_text()))
 
 
 if __name__ == "__main__":

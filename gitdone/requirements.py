@@ -14,19 +14,20 @@ MOST_ITEMS = 10000
 MOST_FILES = 50
 LONGEST_LINE = 2000  # a requirement is a sentence. A longer line is not one, and nothing below should have to read it
 CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s+\[( |x|X)\]\s+(.*\S)\s*$")
-ID = r"[A-Z][A-Z0-9]{0,19}-\d{1,9}(?:\.\d{1,9})*"
+ID = evidence.REQUIREMENT_ID
 ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?:\[[ xX]\]\s+)?)?(\*\*|__|`)?"
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
 # What a table's heading says of a column, by its last word, as in `Req ID`. An id elsewhere in a table is a ticket, a severity or a standard, or refers to a requirement.
-ID_HEADINGS = frozenset("id identifier reqid req requirement story feature ref reference key code item # no number".split())
+ID_HEADINGS = frozenset("id identifier reqid req requirement story feature ref reference item # no number".split())
 WORDS_HEADINGS = ("requirement", "title", "description", "summary", "statement", "want", "text", "capability", "story", "feature", "name", "what")  # the first of these that a table has
 ASIDE_HEADINGS = frozenset("risk test covers case scenario milestone quarter sprint release version date term severity sev priority pri status owner assignee author bug defect incident result type effort estimate phase".split())
 Columns = collections.namedtuple("Columns", "ids words aside")
+ASIDE_SECTION = re.compile(r"\b(?:questions?|risks?|assumptions?|glossary|revisions?|change ?log|references?|appendix|out of scope|not in scope|non-?goals?|decisions?)\b", re.I)  # what a spec keeps beside its requirements
 SAID = re.compile(r"\w+|(?<=\w)[+#＋＃]+|(?<!\w)[-+−](?=\d)|!=|[<>=≠≤≥＜＞＝]+|[%％$]")  # the words, and a mark that changes what is asked: `< 10 MB`, `C++`, `-1`. Everything else is punctuation, in any script
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
-ID_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){ID}(?![0-9A-Za-z-])")
+ID_IN_TEXT = evidence.REQUIREMENT_IN_TEXT
 NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
 
 
@@ -38,6 +39,7 @@ class Item:
         self.weak = False  # its words were a guess at the table's next cell, or it has none, so that a line defining it says more
         self.passed_over = False  # an id in a column that does not say it holds them, which is not a requirement and is said
         self.also = []  # other ids in its cell
+        self.needs_kin = None  # read only beside what its file defines more plainly: a table's first column under a heading that does not say so, or `- REQ-4 words`, which could be prose
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -99,6 +101,8 @@ def _table_item(line, index, source, columns):
         near = next((cells[n] for n in order if n not in aside and any(c.isalpha() for c in cells[n]) and not ID_IN_TEXT.fullmatch(cells[n])), "")
         item = Item(found.group(3), _clean_words(own or named or near), source, index + 1)
         item.weak, item.also = not (own or named), also
+        if columns and at == 1 and at not in ids:
+            item.needs_kin = "table"
         return item
     if passed:
         item = Item(passed, "", source, index + 1)
@@ -124,10 +128,32 @@ def _item(line, index, source, columns=None):
             says_so = bool(inner or outer or wrapped)  # in a list, `- IEEE-754 doubles everywhere` is a sentence
         else:
             says_so = inner == ":" or outer == ":" or bool(wrapped and (inner or outer))  # on a line of its own, its colon, or its mark with its stop: a sentence can start with `SOC-2.`, `GPT-4 -` or **BUG-12**
-        if says_so:
-            return Item(found.group(3), _clean_words(found.group(7)), source, index + 1)
+        if says_so or mark or outer in ("-", "–", "—"):
+            item = Item(found.group(3), _clean_words(found.group(7)), source, index + 1)
+            if not says_so:
+                item.weak, item.needs_kin = True, "prose"
+            return item
     item = CHECK_ITEM.match(line)
-    return Item(None, render.one_line(item.group(2)), source, index + 1) if item else None
+    if not item:
+        return None
+    words = render.one_line(item.group(2))
+    if is_struck(words):
+        return None
+    ident, words = _id_at_the_end(words)
+    return Item(ident, words, source, index + 1)
+
+
+def is_struck(words):
+    return words.startswith("~~") and words.endswith("~~")
+
+
+def _id_at_the_end(words):
+    """(id, the rest): a to-do item can say which requirement it is: `Sign in (REQ-1)`."""
+    if words.endswith(")") and "(" in words:
+        inner = words[words.rindex("(") + 1:-1].strip()
+        if ID_IN_TEXT.fullmatch(inner) and inner.split("-")[0] not in NOT_REQUIREMENTS:
+            return inner, words[:words.rindex("(")].strip()
+    return None, words
 
 
 def lines_to_read(text, problems=None):
@@ -185,7 +211,7 @@ def parse(text, source, problems=None, passed_over=None):
     """The requirements in one Markdown file, as a reader of it would see them: an item nested in a list counts, and code indented under one does not. A heading with an id
     is a requirement, unless what stands under it is a plain checklist: then it is that list's section.
     """
-    trouble, out, in_list, too_long, heading = [], [], False, [], None
+    trouble, out, in_list, too_long, heading, aside_at = [], [], False, [], None, None
     for index, line, columns in lines_with_columns(text, trouble):
         if len(line) > LONGEST_LINE:
             too_long.append(index + 1)
@@ -201,14 +227,23 @@ def parse(text, source, problems=None, passed_over=None):
         item = _item(line, index, source, columns)
         if HEADING.match(line):
             heading = item
+            level = len(line.lstrip()) - len(line.lstrip().lstrip("#"))
+            if aside_at is None or level <= aside_at:
+                aside_at = level if ASIDE_SECTION.search(line) and not (item and item.ident) else None
         elif item and heading:
             heading.is_section, heading = not item.ident, None
-        if item and item.passed_over:
+        if item and (item.passed_over or aside_at is not None):
             if passed_over is not None:
                 passed_over.append(item)
         elif item:
             out.append(item)
             out.extend(Item(other, item.words, source, index + 1) for other in item.also)
+    plain = {item.ident.split("-")[0] for item in out if item.ident and not item.needs_kin and not item.is_section}
+    for item in [item for item in out if item.needs_kin and item.ident.split("-")[0] not in plain]:
+        if plain or item.needs_kin == "prose":  # with nothing plainer in the file, a table's first column is its ids, and a line that could be prose is prose
+            out.remove(item)
+            if passed_over is not None and item.needs_kin == "table":
+                passed_over.append(item)
     if problems is not None:
         problems.extend(f"requirements: {source}: {words}" for words in trouble)
         if too_long:
@@ -273,7 +308,7 @@ class _Rows:
     def __init__(self, rows):
         self.by_id, self.by_words, self.by_word, self.words, self.rows = {}, {}, {}, {}, {r.num: r for r in rows}
         for row in rows:
-            for ident in set(ID_IN_TEXT.findall(f"{row.name} {row.note}")):
+            for ident in set(evidence.requirements_held(row.name, row.note)):
                 self.by_id.setdefault(ident, []).append(row)
             ours = focus.words_of(row.name)
             self.words[row.num] = ours

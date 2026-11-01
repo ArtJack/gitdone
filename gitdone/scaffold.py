@@ -95,10 +95,10 @@ def sections_from_rows(names):
     return [section]
 
 
-def _requirement_in(line, columns=None):
+def _requirement_in(line, index, columns, read):
     from . import requirements
-    found = requirements._item(line, 0, "", columns)
-    return found if found and found.ident and not found.passed_over else None
+    found = requirements._item(line, index, "", columns)
+    return found if found and found.ident and index + 1 in read else None
 
 
 def sections_from_checklist(text):
@@ -106,7 +106,9 @@ def sections_from_checklist(text):
     checklist. `[x]` is the strict kind, and `[ ]` the last kind.
     """
     from . import requirements
-    sections, current, heading, waiting, seen = [], None, "Scope", None, {}
+    sections, current, heading, waiting, seen, passed_over = [], None, "Scope", None, {}, []
+    read = {item.line for item in requirements.parse(text, "", None, passed_over)}  # what `matrix` will read of this file, so that the two agree
+    asides = {item.line for item in passed_over}
 
     def section():
         nonlocal current
@@ -127,12 +129,14 @@ def sections_from_checklist(text):
             held[1][held[2]] = row
             seen[found.ident] = (found, held[1], held[2])
 
-    for _, line, columns in requirements.lines_with_columns(text):
-        if len(line) > requirements.LONGEST_LINE:
+    for index, line, columns in requirements.lines_with_columns(text):
+        if len(line) > requirements.LONGEST_LINE or index + 1 in asides:
             continue
         head = HEADING.match(line)
         item = None if head else CHECK_ITEM.match(line)
-        from_spec = None if item else _requirement_in(line, columns)
+        if item and requirements.is_struck(item.group(2).strip()):
+            continue
+        from_spec = None if item else _requirement_in(line, index, columns, read)
         if head:
             if waiting:
                 from_the_spec(waiting[1])
@@ -142,7 +146,7 @@ def sections_from_checklist(text):
             continue
         if not item and not from_spec:
             continue
-        if waiting and (from_spec or _requirement_in(line, columns)):
+        if waiting and (from_spec or _requirement_in(line, index, columns, read)):
             from_the_spec(waiting[1])
             waiting = None
         elif waiting:
