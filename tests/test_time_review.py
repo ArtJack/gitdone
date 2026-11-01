@@ -3073,6 +3073,18 @@ class TheEighthReader(Case):
     def test_a3_an_error_table_with_a_description_does_not_say_so(self):
         self.assertEqual(self.parsed("- FR-1: Browse\n\n| Code | Description |\n|---|---|\n| ERR-1 | Unknown parcel |\n"), [("FR-1", "Browse")])
 
+    # What no reader wrote and this machine's own specs do
+    def test_a_title_in_bold_with_its_id(self):
+        text = ("## Functional requirements\n\n- **FR-1 Intake.** Accept raw mileage and fuel files.\n- **FR-2** `recall` returns raw evidence.\n\n## Non-functional requirements\n\n"
+                "- **NFR-1 Local-first / free by default.** Inference runs on local models.\n**NFR-2 On its own line:** words\n")
+        self.assertEqual(self.parsed(text), [("FR-1", "Intake"), ("FR-2", "`recall` returns raw evidence."), ("NFR-1", "Local-first / free by default"), ("NFR-2", "On its own line")])
+
+    def test_a_fresh_start_names_the_row_by_that_title(self):
+        self.plan_path.unlink()
+        (self.repo / "requirements.md").write_text("# Spec\n\n## Functional\n\n- **FR-1 Intake.** Accept raw files.\n- **FR-2 Normalize.** Parse them.\n\n## Quality\n\n- **NFR-1 Privacy.** Stays local.\n")
+        self.assertEqual(self.engine("init", "--from-checklist", "requirements.md").returncode, 0)
+        self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Intake", "Normalize", "Privacy"])
+
     # A4: a branch that lives on
     def test_a4_a_row_citing_develop_says_nothing_of_what_else_is_on_it(self):
         self.named("Reports page", "Billing")

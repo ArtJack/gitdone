@@ -59,8 +59,9 @@ class Item:
 
 
 def _clean_words(text):
-    """What follows an id, with the marks around it taken off."""
-    return render.one_line(text.replace("\\|", "|")).strip("*_`").strip()
+    """What follows an id, with the marks around it taken off. A backtick in the words stays, with its other half."""
+    words = render.one_line(text.replace("\\|", "|")).strip("*_ ")
+    return words.strip("` ") if words.count("`") % 2 else words
 
 
 def _cells(line):
@@ -133,6 +134,9 @@ def _item(line, index, source, columns=None):
     found = ITEM_ID.match(line)
     if found and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
         mark, wrapped, inner, outer = found.group(1) or "", found.group(2) and found.group(5), found.group(4), found.group(6)
+        title_ends = found.group(7).find(found.group(2)) if found.group(2) and not found.group(5) else -1
+        if title_ends > 0:  # `- **FR-1 Intake.** Accept the files`: the marks hold its id and its title
+            return Item(found.group(3), _clean_words(found.group(7)[:title_ends].rstrip(" .:")), source, index + 1)
         if mark.startswith("#") or "[" in mark:
             says_so = True  # a heading or a checklist item with an id is an id because of where it stands
         elif mark:
