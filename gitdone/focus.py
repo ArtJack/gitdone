@@ -20,13 +20,15 @@ WINDOW = 14
 NEXT_ROWS = 5
 MOST_DAYS = 36500
 MOST_COMMITS_LISTED = 20000
-MOST_SECONDS = 10  # a signal is a favour. Past this it stops and says it looked at part of the history, whatever the history holds
-LONGEST_MESSAGE = 10000
+MOST_SECONDS = 10  # a signal is a favour. Past this it answers for what it read, whatever the history holds
 MOST_RANGES = 20
 MOST_FILES_IN_A_COMMIT = 5000
+MOST_TABLE_NAMES = 10  # each is asked of every commit, and a table renames about never
 UPKEEP_SUBJECT_LINES = 50  # a subject can say what a small change is. A large one is judged by what it did
 LARGE_UPKEEP_LINES = 200
 ON, UNCLEAR, UPKEEP, OFF, TRACKER = "on plan", "unclear", "upkeep", "off plan", "tracker"
+TOO_MUCH = "Only the newest part of the history was looked at: there is too much of it to read."
+NOTHING_READ = "the history is too large to read in time"
 ROW_WORDS = re.compile(r"\b(rows?)[\s:#_-]*#?(\d{1,9}(?:\s*(?:,|&|\band\b|-|–|\bto\b)\s*#?\d{1,9})*)", re.I)
 ROW_ITEM = re.compile(r"(\d{1,9})(?:\s*(?:-|–|\bto\b)\s*(\d{1,9}))?", re.I)
 PULL_REQUEST = re.compile(r"(?:\(#|pull request #)(\d{1,9})\b", re.I)
@@ -38,7 +40,7 @@ COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 NUMSTAT = re.compile(r"^(\d+|-)\t(\d+|-)\t(.*)$", re.S)
 TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "*/tests/*", "*/test/*", "*/spec/*", "*/specs/*", "*/__tests__/*", "test_*", "*/test_*",
          "*_test.*", "*.test.*", "*.spec.*")
-UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
+UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", "*/.github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
                         ".pre-commit-config.yaml", "LICENSE*", "*.lock", "package-lock.json", "pnpm-lock.yaml", "go.sum", "go.mod", "Makefile", "Dockerfile*",
                         "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml")
 SOURCE_ROOTS = {"src", "lib", "app", "apps", "pkg", "packages", "services", "internal", "cmd"}
@@ -93,20 +95,35 @@ def is_repository(repo):
     return gitio.git(repo, "rev-parse", "--git-dir").code == 0
 
 
-def read_commits(repo, *spec, stdin_text=None):
+def _whole_commits(said):
+    """What a log out of time had said, up to the commit it was in the middle of."""
+    tokens = said.split("\0")
+    last = next((at for at in range(len(tokens) - 1, -1, -1) if COMMIT_ID.match(tokens[at].lstrip("\n"))), 0)
+    return "\0".join(tokens[:last])
+
+
+def read_commits(repo, *spec, stdin_text=None, budget=None):
     """[{sha, parents, date, message, files: [(path, lines changed)], lines}], newest first. In a repository's subfolder, only what touched that folder, with
-    paths from it, so that a tracker in a monorepo answers for its own project and a plan's patterns mean what its other paths mean. A message or a list of files past
-    what a person could mean is read as far as that: each is tried against every row and every pattern.
+    paths from it, so that a tracker in a monorepo answers for its own project and a plan's patterns mean what its other paths mean. A list of files past
+    what a person could mean is read as far as that, since each is tried against every pattern, and `lines` still counts them all. With a `budget`, git has a stage of
+    its time, and what it said in that time is what there is.
     """
     if not is_repository(repo):
         raise PlanError(f"{repo} is not a git repository, so it has no commits to read")
     if gitio.git(repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
         return []
     below = ["--relative", "--full-history", "--", "."] if gitio.git(repo, "rev-parse", "--show-prefix").out.strip() else []
-    done = gitio.git(repo, "log", "--no-renames", "--numstat", "-z", "--format=%H%x00%P%x00%as%x00%B%x00", *spec, *below, stdin_text=stdin_text, timeout=60)
+    done = gitio.git(repo, "log", "--no-renames", "--numstat", "-z", "--format=%H%x00%P%x00%as%x00%B%x00", *spec, *below, stdin_text=stdin_text, timeout=budget.seconds_for_a_stage() if budget else 60)
+    if done.code == 124 and budget:
+        budget.capped = True
+        return _commits_in(_whole_commits(done.partial))
     if done.code:
         raise PlanError(f"focus: git could not read the commits: {done.err.strip()[:200]}")
-    tokens, at, commits = done.out.split("\0"), 0, []
+    return _commits_in(done.out)
+
+
+def _commits_in(said):
+    tokens, at, commits = said.split("\0"), 0, []
     while at + 3 < len(tokens):  # a message cannot hold a NUL, so each field is where the format put it, whatever else the message holds
         sha = tokens[at].lstrip("\n")
         if not COMMIT_ID.match(sha):
@@ -126,7 +143,7 @@ def read_commits(repo, *spec, stdin_text=None):
                 lines += changed
                 if len(files) < MOST_FILES_IN_A_COMMIT:
                     files.append((stat.group(3), changed))
-        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip()[:LONGEST_MESSAGE], "files": files, "lines": lines})
+        commits.append({"sha": sha, "parents": parents.split(), "date": date, "message": message.strip(), "files": files, "lines": lines})
     return commits
 
 
@@ -192,19 +209,29 @@ class _Reading:
         self.upkeep = list(UPKEEP_FILES) + plan.focus.get("upkeep", [])
         self.not_upkeep = plan.focus.get("not_upkeep", [])
         self.to_plan = _from_plan_folder(self.repo, plan.dir)
+        self.table_paths, self.first_table = [], None
+        if self.same_repository:
+            life = _table_life(plan)
+            self.table_paths = list(dict.fromkeys([forecast._where(plan)[1]] + [path for _, _, path in life]))  # a commit from before a rename holds the table under its old name
+            self.first_table = life[-1][0] if life else None
         self.tracker = self._tracker_files(plan)
-        self.table_file = next((name for name in self.tracker if self.same_repository and os.path.realpath(os.path.join(self.repo, name)) == os.path.realpath(plan.doc)), None)
         self.moved_by, self.finished_on = {}, {}
         top = plan.strict_kind.name
-        self.born = None
+        self.born, self.read_from = None, None
         try:
-            steps, self.born = forecast.table_steps(plan, start, today)
+            steps, self.born, self.read_from = forecast.table_steps(plan, start, today)
         except PlanError:  # a table outside any repository has no history, and the commits can still be read
             steps = []
+        self.capped = self.read_from is not None or len(self.table_paths) > MOST_TABLE_NAMES
+        del self.table_paths[MOST_TABLE_NAMES:]
         for sha, date, before, after in steps:
             for n in after.keys() & before.keys():
                 if after[n] == top and before[n] != top:
                     self.finished_on[n] = date
+
+    def seconds_for_a_stage(self):
+        """Half of what is left, so that what comes after this has something to answer with."""
+        return max(self.ends - time.monotonic(), 0) / 2
 
     def out_of_time(self):
         if time.monotonic() > self.ends:
@@ -221,13 +248,13 @@ class _Reading:
         return out
 
     def _tracker_files(self, plan):
-        """The tracker's files, as a commit in this folder names them."""
-        prefix = gitio.git(self.repo, "rev-parse", "--show-toplevel")
-        if prefix.code:
+        """The tracker's files, as a commit in this folder names them, with the names the table has had."""
+        top = _top(self.repo)
+        if top is None:
             return set()
         here = os.path.realpath(self.repo)
         out = set()
-        for path in plan.tracked:
+        for path in list(plan.tracked) + [os.path.join(top, old) for old in self.table_paths]:
             real = os.path.realpath(path)
             if real.startswith(here + os.sep):
                 out.add(os.path.relpath(real, here).replace(os.sep, "/"))
@@ -274,7 +301,8 @@ class _Reading:
     def judge(self, commit, inherited=None):
         """(class, rows, because) for one commit."""
         files = [path for path, _ in commit["files"]]
-        if not files or all(self._is_tracker(path) for path in files):
+        unread = commit["lines"] - sum(lines for _, lines in commit["files"])  # what sorts past the list of files still counts, as work nobody looked at
+        if not unread and (not files or all(self._is_tracker(path) for path in files)):
             return TRACKER, set(), "only the tracker's own files" if files else "no files"
         subject = commit["message"].split("\n", 1)[0]
         if REVERT_SUBJECT.match(subject):
@@ -291,9 +319,9 @@ class _Reading:
                 return ON, set(inherited[0]), inherited[1]
             return UNCLEAR, set(inherited[0]), f"row {min(inherited[0])} had finished by then"
         work = [(path, lines) for path, lines in commit["files"] if not self._is_tracker(path) and not self._is_upkeep(path)]
-        if not work:
+        if not work and not unread:
             return UPKEEP, set(), "tests, docs or project files"
-        total = sum(lines for _, lines in work) or 1
+        total = sum(lines for _, lines in work) + unread or 1
         for rows_here, patterns in self.paths:
             reachable = {n for n in rows_here if self._in_reach(n, commit["date"])}
             if reachable and sum(lines for path, lines in work if matches(self.to_plan(path), patterns)) * 2 >= total:
@@ -321,17 +349,24 @@ BRANCH_FOR_THE_ROW = "its branch is named for the row"
 def _inherited(reading, commits):
     """What a commit brings from around it. A merge someone tied to a row brings its branch along, since a pull request's title says what the commits inside it were
     for. A move in the table is not such a word: a merge of anything moves the table if anything inside it did, and CI's own merge is nobody's. A branch named for a row
-    does the same for what it holds, before any merge, and on a pull request's run the checkout has no branch, so the run says which it is.
+    does the same for what it holds, before any merge, and on a pull request's run the checkout has no branch, so the run says which it is. Returns the commits this can answer
+    for, and what each brings: past its time, a merge and what is older are not judged, because they would read as off plan.
     """
-    out = {}
-    for commit in commits:
-        if len(commit["parents"]) > 1 and not reading.out_of_time():
-            into = MERGE_INTO.match(commit["message"])  # `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and says nothing about that work
-            rows, _ = reading.direct_links({**commit, "message": into.group(1)} if into else commit)
-            if rows:
-                inside = gitio.git(reading.repo, "rev-list", f"{commit['parents'][0]}..{commit['sha']}")
-                for sha in inside.out.split():
-                    out.setdefault(sha, (rows, MERGED_FOR_THE_ROW))
+    out, until = {}, time.monotonic() + reading.seconds_for_a_stage()
+    for at, commit in enumerate(commits):
+        if len(commit["parents"]) < 2:
+            continue
+        if time.monotonic() > until:
+            reading.capped = True
+            commits = commits[:at]
+            break
+        into = MERGE_INTO.match(commit["message"])  # `Merge branch 'main' into row-3-x` brings main's work into the row's branch, and its subject says nothing about that work
+        said = f"{into.group(1)}\n{commit['message'].partition(chr(10))[2]}" if into else commit["message"]
+        rows, _ = reading.direct_links({**commit, "message": said})
+        if rows:
+            inside = gitio.git(reading.repo, "rev-list", f"{commit['parents'][0]}..{commit['sha']}")
+            for sha in inside.out.split():
+                out.setdefault(sha, (rows, MERGED_FOR_THE_ROW))
     branch = gitio.git(reading.repo, "symbolic-ref", "--quiet", "--short", "HEAD").out.strip() or os.environ.get("GITHUB_HEAD_REF", "")
     rows = named_rows(branch, reading.known)
     if rows and branch != reading.plan.default_branch:
@@ -340,35 +375,59 @@ def _inherited(reading, commits):
                 for sha in gitio.git(reading.repo, "rev-list", f"{ref}..HEAD").out.split():
                     out.setdefault(sha, (rows, BRANCH_FOR_THE_ROW))
                 break
-    return out
+    return commits, out
 
 
 def _moves(reading, commits):
-    """{commit: rows it moved or added}, from its own change to the table, so that a commit says the same on its branch, inside a merge and after one."""
-    mine = [c for c in commits if len(c["parents"]) == 1 and any(path == reading.table_file for path, _ in c["files"]) and not all(reading._is_tracker(path) for path, _ in c["files"])]
-    if not mine:
-        return {}
-    top, rel = forecast._where(reading.plan)
-    specs = [f"{side}:{rel}" for c in mine for side in (c["parents"][0], c["sha"])]
-    specs = specs[:gitio.fitting(top, specs, gitio.MOST_BYTES_OF_HISTORY) // 2 * 2]
-    texts, out = gitio.blobs(top, specs), {}
-    for at, commit in enumerate(mine[:len(specs) // 2]):
-        if texts[2 * at] is None or texts[2 * at + 1] is None:
-            continue
-        before = forecast._kinds(reading.plan, texts[2 * at])[0]
-        after, troubled = forecast._kinds(reading.plan, texts[2 * at + 1])
-        if not after or (troubled and len(after) < len(before)):
-            continue
-        moved = {n for n in after.keys() & before.keys() if after[n] != before[n]} | (after.keys() - before.keys())
-        if moved:
-            out[commit["sha"]] = moved
-    return out
+    """Which rows each commit moved or added, from its own change to the table, so that a commit says the same on its branch, inside a merge and after one. Git is asked, because
+    a commit's list of files only holds what is under `repo`. Returns the commits this can answer for: past its bytes or its time, a commit and what is older are not judged,
+    because they would read as off plan.
+    """
+    if not reading.same_repository:
+        return commits
+    asking = [c for c in commits if len(c["parents"]) == 1 and not all(reading._is_tracker(path) for path, _ in c["files"])]
+    top, each = forecast._where(reading.plan)[0], len(reading.table_paths)
+    found = gitio.objects(top, [f"{side}:{path}" for c in asking for side in (c["sha"], c["parents"][0]) for path in reading.table_paths])
+
+    def version(at):
+        return next(filter(None, found[at:at + each]), None)
+    changed, sizes, room, stop = [], {}, gitio.MOST_BYTES_OF_HISTORY, None
+    for at, commit in enumerate(asking):
+        after, before = version(2 * at * each), version((2 * at + 1) * each)
+        if after and before and after != before:
+            room -= sum(size for name, size in {after, before} if name not in sizes)  # two commits in a row share a version, and it is read once
+            if room < 0:
+                stop = commit
+                break
+            sizes.update((after, before))
+            changed.append((commit, after[0], before[0]))
+    texts = dict(zip(sizes, gitio.blobs(top, list(sizes))))
+    kinds, until = {}, time.monotonic() + reading.seconds_for_a_stage()
+
+    def kinds_of(name):
+        if name not in kinds:
+            kinds[name] = forecast._kinds(reading.plan, texts[name])
+        return kinds[name]
+    for commit, after, before in changed:
+        if time.monotonic() > until or texts[after] is None or texts[before] is None:
+            stop = commit
+            break
+        then, (now, troubled) = kinds_of(before)[0], kinds_of(after)
+        moved = {n for n in now.keys() & then.keys() if now[n] != then[n]} | (now.keys() - then.keys())
+        if moved and now and not (troubled and len(now) < len(then)):
+            reading.moved_by[commit["sha"]] = moved
+    if stop is None:
+        return commits
+    reading.capped = True
+    return commits[:commits.index(stop)]
 
 
 def _judged(reading, spec, stdin_text=None):
-    commits = read_commits(reading.repo, *spec, stdin_text=stdin_text)
-    reading.moved_by = _moves(reading, commits)
-    inherited = _inherited(reading, commits)
+    commits = read_commits(reading.repo, *spec, stdin_text=stdin_text, budget=reading)
+    if reading.read_from and reading.same_repository:  # what came before the table's history could be read, it cannot answer for
+        commits = [c for c in commits if c["date"] >= reading.read_from]
+    commits = _moves(reading, commits)
+    commits, inherited = _inherited(reading, commits)
     out = []
     for commit in commits:
         if reading.out_of_time():
@@ -389,31 +448,40 @@ def _in_the_window(reading, start, today):
     limit = []
     since = start.isoformat()
     if reading.same_repository:
-        first = _first_table_commit(reading.plan)
-        if first is None:
+        if reading.first_table is None:
             return []
-        limit = ["--not", first]
+        limit = ["--not", reading.first_table]
     elif reading.born:
         since = max(since, reading.born)
     if gitio.git(reading.repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}").code:
         return []
-    listed = gitio.git(reading.repo, "log", "--format=%H %as", f"--max-count={MOST_COMMITS_LISTED}", "HEAD", *limit, timeout=60)
-    if listed.code:
+    listed = gitio.git(reading.repo, "log", "--format=%H %as", f"--max-count={MOST_COMMITS_LISTED}", "HEAD", *limit, timeout=reading.seconds_for_a_stage())
+    if listed.code == 124:
+        reading.capped = True
+        lines = listed.partial.splitlines()[:-1]
+    elif listed.code:
         raise PlanError(f"focus: git could not list the commits: {listed.err.strip()[:200]}")
-    lines = listed.out.splitlines()
-    reading.capped = len(lines) >= MOST_COMMITS_LISTED
+    else:
+        lines = listed.out.splitlines()
     out, latest = [], today.isoformat()
     for line in lines:
         sha, _, date = line.partition(" ")
         if min(date, latest) >= since:
             out.append(sha)
+    if len(lines) >= MOST_COMMITS_LISTED and min(lines[-1].partition(" ")[2], latest) >= since:  # the list ended before the window did
+        reading.capped = True
     return out
 
 
-def _first_table_commit(plan):
+def _table_life(plan):
+    """Every commit that changed the table, in all this history and on whichever branch it began, the first of them last."""
     top, rel = forecast._where(plan)
-    commits = history.table_commits(top, rel, first_parent=True)
-    return commits[-1][0] if commits else None
+    return history.table_commits(top, rel, topological=True)
+
+
+def _first_table_commit(plan):
+    life = _table_life(plan)
+    return life[-1][0] if life else None
 
 
 
@@ -473,10 +541,11 @@ def _next_words(found):
 def text(found, show_all=False):
     span = (f"Last {found['days']} days" if found["days"] != 1 else "Today") if found["days"] else f"In {render.one_line(found['revisions'])}"
     shallow = ["This clone is shallow, so only part of the history is here."] if found["shallow"] else []
-    shallow += ["Only part of the history was looked at: it is too large to read in time."] if found["newest_only"] else []
+    shallow += [TOO_MUCH] if found["newest_only"] and found["commits"] else []
     shallow += [f"⚠ {render.one_line(words)}" for words in found["plan_problems"]]
     if not found["commits"]:
-        return "\n".join(shallow + [line for line in (f"{span}: no commits but the tracker's own since the table began.", _next_words(found)) if line])
+        said = NOTHING_READ if found["newest_only"] else "no commits but the tracker's own since the table began"
+        return "\n".join(shallow + [line for line in (f"{span}: {said}.", _next_words(found)) if line])
     lines_in_all = sum(found["lines"].values())
     L = shallow + [f"{span}: {found['commits']} commit{'' if found['commits'] == 1 else 's'}, {_lines(lines_in_all)} changed."]
     rows = _first(found["rows"], 6, lambda r: f"{r['row']} ({r['commits']})")
@@ -515,15 +584,21 @@ def text(found, show_all=False):
     return "\n".join(L)
 
 
+def _of_a_part(found):
+    return ", as far as it could read" if found["newest_only"] else ""
+
+
 def opener_line(plan, today=None):
     """One line for whoever opens the project; None if too little has happened to say anything."""
     found = data(plan, today=today)
+    if found["newest_only"] and not found["commits"]:
+        return f"Focus: {NOTHING_READ}."
     if found["commits"] < 3:
         return None
     areas = _first(found["areas"], 2, lambda a: render.one_line(a["area"]))
     off = f"{found['off_plan']} off plan ({areas})" if found["off_plan"] else "none off plan"
     unclear = f", {found['unclear']} unclear" if found["unclear"] else ""
-    return f"Focus, last {found['days']} days: {found['on_plan']} of {found['commits']} commits on plan, {off}{unclear}."
+    return f"Focus, last {found['days']} days{_of_a_part(found)}: {found['on_plan']} of {found['commits']} commits on plan, {off}{unclear}."
 
 
 def last_line(plan):
@@ -536,7 +611,7 @@ def last_line(plan):
     head = gitio.git(reading.repo, "rev-parse", "--short=7", "HEAD").out.strip()
     if not judged or judged[0]["class"] != OFF or not judged[0]["commit"].startswith(head[:7]):  # in a subfolder, the newest commit that touched it may be an old one
         return None
-    first = _first_table_commit(plan)
+    first = reading.first_table
     if first is None or first.startswith(head[:7]):  # nothing could have been on a plan that did not exist yet
         return None
     following = render.opener_data(plan, reading.table)["next"]
@@ -575,8 +650,8 @@ def last_lines():
 def counts_words(found):
     """A few words for a pull request's run."""
     if not found["commits"]:
-        return ""
-    return f"Focus: {found['on_plan']} of {found['commits']} commits on plan, {found['unclear']} unclear, {found['upkeep']} upkeep, {found['off_plan']} off plan."
+        return f"Focus: {NOTHING_READ}." if found["newest_only"] else ""
+    return f"Focus{_of_a_part(found)}: {found['on_plan']} of {found['commits']} commits on plan, {found['unclear']} unclear, {found['upkeep']} upkeep, {found['off_plan']} off plan."
 
 
 def next_data(plan):

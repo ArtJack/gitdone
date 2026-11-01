@@ -17,6 +17,10 @@ ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
+TABLE_RULE = re.compile(r"^\s*\|(?:\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$")
+ID_HEADING = re.compile(r"^(?:[\w _-]+[ _-])?(?:id|ref|reference|key|code|req|no|number|#)\.?$", re.I)
+WORDS_HEADING = re.compile(r"^(?:[\w _-]+[ _-])?(?:title|name|requirement|description|summary|story|feature|capability|what|text)$", re.I)
+SAID = re.compile(r"\w+|[^\w\s.,;:!?\"'’‘“”«»…()\[\]{}/\\*`~–—-]")  # the words, and a mark that changes what is asked: `< 10 MB` is not `> 10 MB`, and `C` is not `C++`
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 ID_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){ID}(?![0-9A-Za-z-])")
 NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
@@ -27,6 +31,7 @@ class Item:
         self.ident, self.words, self.source, self.line = ident, words, source, line
         self.near = None
         self.is_section = False
+        self.in_table = False
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -40,20 +45,36 @@ def _clean_words(text):
     return render.one_line(text.replace("\\|", "|")).strip("*_`").strip()
 
 
-def _table_item(line, index, source):
-    """A row of a table: the first cell that starts with an id, in whichever column the table keeps them, with the words after it or else the next cell's."""
-    cells = [c.strip() for c in re.split(r"(?<!\\)\|", line)]
-    for at, cell in enumerate(cells):
-        found = ITEM_ID.match(cell)
+def _cells(line):
+    return [c.strip() for c in re.split(r"(?<!\\)\|", line)]
+
+
+def _columns(heading):
+    """(the columns that hold ids, the column that holds their words), by what a table's heading calls them."""
+    names = [cell.strip("*_` ") for cell in _cells(heading)]
+    return [at for at, name in enumerate(names) if ID_HEADING.match(name)], next((at for at, name in enumerate(names) if WORDS_HEADING.match(name)), None)
+
+
+def _table_item(line, index, source, columns):
+    """A row of a table. Its id is in the first column, or in one its heading says holds ids: anywhere else an id refers to a requirement, or is prose about one. Its words
+    follow the id in its cell, or are in the column the heading says holds them, or the next cell along, or the one before.
+    """
+    cells = _cells(line)
+    with_ids, with_words = columns or ([], None)
+    for at in [1] + with_ids:
+        found = ITEM_ID.match(cells[at]) if at < len(cells) else None
         if found and not found.group(1) and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
-            words = found.group(7) or next((c for c in cells[at + 1:] if c), "")
-            return Item(found.group(3), _clean_words(words), source, index + 1)
+            named = cells[with_words] if with_words not in (None, at) and with_words < len(cells) else ""
+            words = found.group(7) or named or next((c for c in cells[at + 1:] if c), "") or next((c for c in reversed(cells[:at]) if c), "")
+            item = Item(found.group(3), _clean_words(words), source, index + 1)
+            item.in_table = True
+            return item
     return None
 
 
-def _item(line, index, source):
+def _item(line, index, source, columns=None):
     if line.lstrip().startswith("|"):
-        return _table_item(line, index, source)
+        return _table_item(line, index, source, columns)
     found = ITEM_ID.match(line)
     if found and found.group(3).split("-")[0] not in NOT_REQUIREMENTS:
         mark, wrapped, inner, outer = found.group(1) or "", found.group(2) and found.group(5), found.group(4), found.group(6)
@@ -106,12 +127,24 @@ def lines_to_read(text, problems=None):
             problems.append(f"line {comment_line + 1} opens an HTML comment that never closes, so nothing after it is read")
 
 
+def lines_with_columns(text, problems=None):
+    """(index, line, what the heading of the table it stands in says of its columns), for what a reader of the file takes as its words."""
+    columns, before = None, ""
+    for index, line in lines_to_read(text, problems):
+        if len(line) <= LONGEST_LINE and TABLE_RULE.match(line) and before.lstrip().startswith("|"):
+            columns = _columns(before)
+        elif not line.lstrip().startswith("|"):
+            columns = None
+        before = line if len(line) <= LONGEST_LINE else ""
+        yield index, line, columns
+
+
 def parse(text, source, problems=None):
     """The requirements in one Markdown file, as a reader of it would see them: an item nested in a list counts, and code indented under one does not. A heading with an id
     is a requirement, unless what stands under it is a plain checklist: then it is that list's section.
     """
     trouble, out, in_list, too_long, heading = [], [], False, [], None
-    for index, line in lines_to_read(text, trouble):
+    for index, line, columns in lines_with_columns(text, trouble):
         if len(line) > LONGEST_LINE:
             too_long.append(index + 1)
             continue
@@ -123,7 +156,7 @@ def parse(text, source, problems=None):
             in_list = False
         if indented and not (marked and in_list):
             continue
-        item = _item(line, index, source)
+        item = _item(line, index, source, columns)
         if HEADING.match(line):
             heading = item
         elif item and heading:
@@ -139,7 +172,7 @@ def parse(text, source, problems=None):
 
 def read(plan):
     """(items, problems). A plan can come from a clone, and these words can reach a pull request's comment, so only files of this project are read."""
-    items, problems, seen = [], [], set()
+    items, problems, seen = [], [], {}
     root = plan.root()
     for name in plan.requirements[:MOST_FILES]:
         said = render.one_line(name)
@@ -160,8 +193,10 @@ def read(plan):
         for item in found:
             key = item.ident or " ".join(item.words.lower().split())
             if key not in seen:
-                seen.add(key)
+                seen[key] = len(items)
                 items.append(item)
+            elif items[seen[key]].in_table and not item.in_table:  # what a table says of an id may only refer to it, and this defines it
+                items[seen[key]] = item
     if len(items) > MOST_ITEMS:
         problems.append(f"requirements: {len(items)} of them, and only the first {MOST_ITEMS} were read")
         del items[MOST_ITEMS:]
@@ -169,10 +204,10 @@ def read(plan):
 
 
 def _said(words):
-    """The words themselves, in their order, with capitals and punctuation aside. `Add SMS login` and `Remove SMS login`, or `step 1` and `step 2`, are two requirements, whatever else they share.
+    """The words themselves, in their order, with capitals and punctuation aside. `Add SMS login` and `Remove SMS login`, `step 1` and `step 2`, are two requirements, whatever else they share.
     The commit a checklist item names is what it says of itself, not what it asks for.
     """
-    return " ".join(re.findall(r"\w+", evidence.NAMED_EVIDENCE.sub("", words).lower()))
+    return " ".join(SAID.findall(evidence.NAMED_EVIDENCE.sub("", words).lower()))
 
 
 class _Rows:

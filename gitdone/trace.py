@@ -9,13 +9,15 @@ from . import focus, gitio, render, report, requirements, table as tables
 
 BACKTICKED = re.compile(r"`([^`\s]+)`")
 MOST_TESTS_SHOWN = 3
-NOT_TESTS = ("fixtures/*", "*/fixtures/*", "testdata/*", "*/testdata/*", "*/__snapshots__/*", "*/snapshots/*", "*.json", "*.yaml", "*.yml", "*.txt", "*.csv", "*.xml", "*.html", "*.md",
-             "*.snap", "*.png", "*.jpg", "*.svg", "*.lock", "*.toml", "*.ini", "*.cfg")
+TEST_CODE = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".rb", ".go", ".rs", ".java", ".kt", ".kts", ".scala", ".groovy", ".swift", ".m", ".c", ".cc", ".cpp", ".cs", ".fs",
+             ".php", ".sh", ".bash", ".bats", ".ex", ".exs", ".erl", ".clj", ".lua", ".dart", ".r", ".pl", ".pm", ".feature", ".robot")
+NOT_TESTS = ("fixtures/*", "*/fixtures/*", "testdata/*", "*/testdata/*", "tests/data/*", "*/tests/data/*", "test/data/*", "*/test/data/*", "spec/data/*", "*/spec/data/*", "*/__snapshots__/*", "*/snapshots/*",
+             "__init__.py", "*/__init__.py", "conftest.py", "*/conftest.py")
 
 
 def _is_test(path):
-    """What a test's folder holds is not all tests: a fixture a commit touched says nothing about a row being tested."""
-    return focus.matches(path, focus.TESTS) and not focus.matches(path, NOT_TESTS)
+    """What a test's folder holds is not all tests. A test is code, and a fixture or a data file a commit touched says nothing about a row being tested."""
+    return focus.matches(path, focus.TESTS) and path.lower().endswith(TEST_CODE) and not focus.matches(path, NOT_TESTS)
 
 
 def _cell(text):
@@ -70,6 +72,8 @@ def rows_data(plan, offline=False):
     if not focus.is_repository(repo):  # with no repository there is nothing to tie a row to, and the rows themselves still stand
         return [{**row, "named_by": [], "tests": []} for row in base if not row.get("prose")]
     tree = _tree(repo)
+    to_plan = focus._from_plan_folder(repo, plan.dir)
+    named_in_a_note = tree | {to_plan(path) for path in tree}  # from the plan's folder, as its other paths are, or from the folder it names as `repo`
     cited = {row["row"]: _evidence_commits(row) for row in base}
     full = {}
     for shas in cited.values():
@@ -88,7 +92,7 @@ def rows_data(plan, offline=False):
         commits = [sha[:7] for sha, _ in naming.get(num, [])]
         for _, paths in naming.get(num, []):
             touched += paths
-        tests = sorted({path for path in touched if path in tree and _is_test(path)} | set(_says_tests(row["note"], tree)))
+        tests = sorted({path for path in touched if path in tree and _is_test(path)} | set(_says_tests(row["note"], named_in_a_note)))
         out.append({**row, "named_by": commits, "tests": tests})
     return out
 

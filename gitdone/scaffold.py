@@ -95,9 +95,9 @@ def sections_from_rows(names):
     return [section]
 
 
-def _requirement_in(line):
+def _requirement_in(line, columns=None):
     from . import requirements
-    found = requirements._item(line, 0, "")
+    found = requirements._item(line, 0, "", columns)
     return found if found and found.ident else None
 
 
@@ -120,12 +120,12 @@ def sections_from_checklist(text):
     def from_the_spec(found):  # the id goes in the note, so that the matrix can tie the row back to what asked for it
         section().rows.append((_clean(found.words) or found.ident, LAST, found.ident))
 
-    for _, line in requirements.lines_to_read(text):
+    for _, line, columns in requirements.lines_with_columns(text):
         if len(line) > requirements.LONGEST_LINE:
             continue
         head = HEADING.match(line)
         item = None if head else CHECK_ITEM.match(line)
-        from_spec = None if item else _requirement_in(line)
+        from_spec = None if item else _requirement_in(line, columns)
         if head:
             if waiting:
                 from_the_spec(waiting[1])
@@ -135,7 +135,7 @@ def sections_from_checklist(text):
             continue
         if not item and not from_spec:
             continue
-        if waiting and (from_spec or _requirement_in(line)):
+        if waiting and (from_spec or _requirement_in(line, columns)):
             from_the_spec(waiting[1])
             waiting = None
         elif waiting:
