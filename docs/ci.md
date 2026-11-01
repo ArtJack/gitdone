@@ -76,7 +76,7 @@ On GitLab, `check` verifies `MR !12` through `glab` when it is installed and log
 ```yaml
 repos:
   - repo: https://github.com/ArtJack/gitdone
-    rev: v0.2.0
+    rev: v0.3.0
     hooks:
       - id: gitdone
 ```

@@ -85,8 +85,8 @@ from it.
 
 | # | Capability | Status | Note |
 |---|---|---|---|
-| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Partial | On a branch until the first release is out. |
-| 45 | `focus` and `next`: where the commits went, what comes next, and a hook that says when a commit was off plan | Partial | On a branch until the first release is out. |
-| 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Partial | On a branch until the first release is out. |
-| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Partial | On a branch until the first release is out. |
-| 48 | The agent rules, the skill and the MCP tools say all of this | Partial | On a branch until the first release is out. |
+| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Live | Nine independent reads; the numbers were checked by hand on real histories. *(Live 2026-11-01: PR #1; was Partial)* |
+| 45 | `focus` and `next`: where the commits went, what comes next, and a hook that says when a commit was off plan | Live | Totals summed by hand on real histories. *(Live 2026-11-01: PR #1; was Partial)* |
+| 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Live | Read against the real specs of five projects. *(Live 2026-11-01: PR #1; was Partial)* |
+| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Live | Published by the Action on a push to main. *(Live 2026-11-01: PR #1; was Partial)* |
+| 48 | The agent rules, the skill and the MCP tools say all of this | Live | All four MCP tools answered in the last read. *(Live 2026-11-01: PR #1; was Partial)* |
