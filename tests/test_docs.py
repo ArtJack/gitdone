@@ -142,32 +142,95 @@ class TheChartInTheReadme(unittest.TestCase):
         self.assertEqual(drawn, (ROOT / "docs" / "img" / "bramble-burnup.svg").read_text(encoding="utf-8"))
 
 
-class TheTimelineInTheReadme(unittest.TestCase):
+class WhatTheReadmeShowsOfTheSample(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if os.name == "nt":
+            raise unittest.SkipTest("the sample's portfolio runs the README's session, on a shell with forward slashes")
         spec = importlib.util.spec_from_file_location("timeline", ROOT / "docs" / "demo" / "timeline.py")
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
         with tempfile.TemporaryDirectory() as folder:
-            cls.block, cls.picture, cls.samples = cls.module.produce(folder)
+            cls.shown = cls.module.produce(folder)
 
-    def test_the_readme_block_is_what_the_commands_print(self):
-        shown = README[README.index(self.module.START) + len(self.module.START):README.index(self.module.END)].strip()
-        self.assertEqual(self.module.normalized(shown), self.module.normalized(self.block))
+    def test_each_block_is_what_the_commands_print(self):
+        for name, block in self.shown.blocks.items():
+            start, end = f"<!-- {name}:start -->", f"<!-- {name}:end -->"
+            found = README[README.index(start) + len(start):README.index(end)].strip()
+            self.assertEqual(self.module.normalized(found), self.module.normalized(block), name)
 
-    def test_the_picture_is_what_the_command_draws(self):
-        drawn = (ROOT / "docs" / "img" / "bramble-burndown.svg").read_text(encoding="utf-8")
-        self.assertEqual(drawn, self.picture)
+    def test_each_picture_is_what_the_command_draws(self):
+        for name, picture in self.shown.pictures.items():
+            self.assertEqual((ROOT / "docs" / "img" / name).read_text(encoding="utf-8"), picture, name)
 
-    def test_it_tells_the_story_it_is_there_for(self):
-        for words in ("not a promise", "85% sure", "That moves the likely date", "Off plan", "Time "):
-            self.assertIn(words, self.block)
+    def test_the_scale_tells_the_story_it_is_there_for(self):
+        for words in ("strict ████", "weighted ███████", "Next, in order", "gate: **PASS**", "| Project |", "**fail**, 1 contradicted"):
+            self.assertIn(words, "\n".join(self.shown.blocks.values()))
+
+    def test_the_date_is_not_on_the_readmes_page(self):
+        self.assertNotIn("Likely done", README)
+        self.assertNotIn("likely date", README)
+        self.assertNotIn("bramble-burndown", README)
 
     def test_the_documents_samples_are_what_the_commands_print(self):
         text = (ROOT / "docs" / "timeline.md").read_text(encoding="utf-8")
-        for name, sample in self.samples.items():
+        for name, sample in self.shown.samples.items():
             shown = text[text.index(f"<!-- {name}:start -->") + len(f"<!-- {name}:start -->"):text.index(f"<!-- {name}:end -->")].strip()
             self.assertEqual(self.module.normalized(shown), self.module.normalized(sample))
+
+    def test_the_date_says_what_it_is_where_it_is_shown(self):
+        for words in ("not a promise", "85% sure", "Time "):
+            self.assertIn(words, self.shown.samples["eta"])
+        self.assertIn("That moves the likely date", self.shown.samples["add"])
+
+
+class TheInstruction(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if os.name == "nt":
+            raise unittest.SkipTest("the README shows a session on a shell with forward slashes")
+        spec = importlib.util.spec_from_file_location("guide", ROOT / "docs" / "demo" / "guide.py")
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+        with tempfile.TemporaryDirectory() as folder:
+            cls.block = cls.module.produce(folder)
+
+    def test_the_readme_block_is_that_session(self):
+        found = README[README.index(self.module.START) + len(self.module.START):README.index(self.module.END)].strip()
+        self.assertEqual(found, self.block)
+
+    def test_every_step_did_what_it_says(self):
+        for words in ("result: PASS", "is on main", "Built, not live", "Not built → Partial", "added row 5", "out of the scope", "strict ████░░░░░░░░░░░░  25%"):
+            self.assertIn(words, self.block)
+        self.assertNotIn("FAIL", self.block)
+        self.assertNotIn("refused", self.block)
+
+
+class ThePageOnPyPI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("pypi_readme", ROOT / "docs" / "demo" / "pypi_readme.py")
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+        cls.text = (ROOT / "README-pypi.md").read_text(encoding="utf-8")
+
+    def test_it_is_made_from_the_readme(self):
+        self.assertEqual(self.text, self.module.made_from(README))
+
+    def test_the_registry_can_tell_it_is_ours(self):
+        self.assertIn("<!-- mcp-name: io.github.ArtJack/gitdone -->", self.text)
+
+    def test_nothing_on_it_depends_on_being_in_the_repository(self):
+        for groups in re.findall(r"\]\((?!https?://|mailto:)([^)\s]+)\)|<img src=\"(?!https?://)([^\"]+)\"", self.text):
+            self.fail(f"a relative link on PyPI: {groups}")
+
+    def test_every_page_it_links_to_is_in_the_repository(self):
+        for name in re.findall(r"https://(?:github\.com/ArtJack/gitdone/(?:blob|tree)|raw\.githubusercontent\.com/ArtJack/gitdone)/v[\d.]+/([^)\"#\s]+)", self.text):
+            self.assertTrue((ROOT / name).exists(), name)
+
+    def test_it_says_how_to_install_and_shows_the_scale(self):
+        for words in ("pipx install gitdone", "uv tool install gitdone", "pip install gitdone", "/plugin install gitdone@gitdone", "npx skills add", "strict ████", "bramble-scale.svg", "sponsors/ArtJack"):
+            self.assertIn(words, self.text)
 
 
 def shipped_files():

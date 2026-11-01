@@ -7,7 +7,8 @@ pace's own spread by a closed form, so the same history on the same day gives th
 Two lines are drawn, as the percent has strict and weighted: one through rows reaching the strict kind, which git holds to a commit on the default branch,
 and one through everything the weights credit.
 
-Nothing here reaches the view: it changes with the day, and the gate compares the view byte for byte.
+Nothing here reaches the view: it changes with the day, and the gate compares the view byte for byte. Nothing here reaches anywhere else
+either until a plan says `"dates": true`, or somebody asks: a young line should not be read as a promise from every screen.
 """
 import datetime
 import math
@@ -22,6 +23,7 @@ SURE = 1.0364  # the 85th percentile of a normal curve, in spreads from its midd
 TOO_FAR = 3650
 MOST_DAYS = 36500
 STATES_BEFORE_THE_WINDOW = 5  # enough to find one the table could be read in
+ASKED_FOR = "Experimental until 1.0.0, so it shows only when asked for. `\"dates\": true` in the plan puts it beside the percent."
 
 
 def _where(plan):

@@ -1,76 +1,7 @@
-# Time, focus and traceability
+# Focus, traceability and the date
 
-A percent says how much. These say when, where the work went, and whether the table still answers what was asked. None of them can stop a
+A percent says how much. These say where the work went, whether the table still answers what was asked, and, if you ask, when. None of them can stop a
 commit. They exist so that a change of plan is a decision somebody makes, and not something that happens to a project a commit at a time.
-
-## `gitdone eta`: when
-
-<!-- eta:start -->
-```text
-Likely done Jun 23 on Live rows alone, or Apr 14 with all work: a line through the last 28 days, not a promise.
-
-              Likely  85% sure  Left      A day
-  Live alone  Jun 23  Jul 31    12 rows   0.11
-  All work    Apr 14  Apr 29    8.7 rows  0.21
-
-Scope now: 16 rows, strict 25%, weighted 46%.
-Rows moved on 6 of 28 days.
-Scope: 5 rows added, 0 taken out in that time.
-Deadline Apr 15: 69 days late on Live rows alone, 1 day early with all work. It needs 0.28 Live rows a day, or 0.2 of all work from here.
-  Live █████░░░░░░░░░░░░░░░ 25%
-  Work █████████░░░░░░░░░░░ 46%
-  Time ███████████░░░░░░░░░ 54%, Jan 12 to Apr 15
-```
-<!-- eta:end -->
-
-Two lines, as the percent has strict and weighted. **Live alone** is the line through rows reaching Live, which git holds to a commit on the default branch. **All work** also credits
-what stopped short of it, at the plan's weights, and a commit can mark seven rows Partial with a word each. The gap between the dates is work short of Live, and it means what the gap between the two percents means.
-
-**What is left:** a Live row leaves nothing. With all work, a Partial row at 0.4 leaves 0.6, and a row not built leaves all of it.
-
-**The pace** is what moved existing rows, per calendar day, over the last 28 days (`--days`), or over the table's life if that is shorter. It comes from the table's history along this branch's first
-parents, by the dates the commits keep, so a rebase moves nothing. A day when nothing moved counts, because the time passed. A row moving backwards counts against it. Each line of the table can be checked by hand: what is left over the pace is the likely date.
-
-**What a table says of the past is not pace.** Its first day is where the project stood, and so is a row reaching Live on commits or tags from before the table began: bringing a project under a tracker a row at a time gives it a starting line and not a speed, and `eta` says how many rows it set aside. A pull request's date cannot be read offline, and a row marked Partial or Built cites no commit, so those still count: cite a commit or a tag to keep old work out. The burn-up and the candle draw every step, because they are the record.
-
-**A row added or taken out is not pace.** It changes what is left, and so the date. That is the point: `gitdone add` and `gitdone remove` say what they just did, and so does the Action's comment on a pull
-request that changes the scope. A feature's cost in days is on the table at the moment someone decides to take it.
-
-**The range** comes from the pace's own spread. The 85% date is where 85% of futures with the same days, drawn at random, have finished: a closed form takes the sum of many days as normal, a test holds it to a
-real resampling, and so the same history on the same day gives the same words. A pace that came in one burst gets a wide range, and the words say when one day made most of it.
-
-**Scope that keeps growing,** on more than one day, changes what the date means. The headline then says "if the scope stops growing", and `eta` gives the two rates: rows a day of scope against rows a day of work.
-If the scope grows as fast as the work moves, it says the work never catches up.
-
-**No date is an answer.** Under three days of movement, there is no line to draw. With nothing moved in the window, it says when the table last changed. If rows moved and went back as far, it says that. Past
-ten years, it says that. A shallow clone has lost the history, and it says that too.
-
-**A deadline** is `"deadline": "2026-12-01"` in the plan, and `"start"` if the table is younger than the work. Against it, `eta` says how late on each line and what pace each needs, and burns time against work
-on the bars. The view states the deadline, because that is the plan's word, so after setting or moving it run `gitdone render --write`, as after any edit to what the view shows. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action. With groups, the opener and the view give each group's percent, and `eta` and `portfolio` count all of them and say "all groups". `eta --group` gives one group's.
-
-**In the plan's order:** a workstream is a named set of rows in the plan, and `order` says which comes first:
-
-```json
-"workstreams": [{"id": "P1", "name": "Get paid", "rows": "3-5", "needs": "a Stripe test account"}, {"id": "P2", "name": "Launch", "rows": [6, 9]}],
-"order": ["P1", "P2"]
-```
-
-`eta` reads the order as a sequence and dates each one, with all work. That is a roadmap with dates, and it is as good as the order is. `next` lists the first one with something open. With no workstreams, `next` lists the table's first five open rows.
-
-### What it cannot tell
-
-It is a line through the past. It knows nothing about what a row costs, so it treats them alike, and a big one will surprise it. A table moved in one sitting
-makes a poor pace. A table moved and rewritten in one commit starts a new history, because that is how git sees it. Use it for the decision it can inform: cut the scope, or move the date. Do not promise it to anyone in the words of a calendar.
-
-### The candle
-
-```bash
-gitdone chart --burndown --out burndown.svg
-```
-
-What is left over time, on both lines. It burns down with the work and steps up when the scope grows, with the change marked, or when a row goes back. Past today it has each line's date, the range,
-and with a deadline, the line it would take to make it. The same history on the same day gives the same bytes. With `publish-branch` set, [the Action](ci.md) publishes it as `burndown.svg` beside the badge. Plain `chart` stays the
-burn-up: the record, with no forecast on it.
 
 ## `gitdone focus`: where the work went
 
@@ -151,3 +82,91 @@ files, the matrix is the rows, with their evidence and tests.
 
 A test listed here exists. Whether it passes is your CI's word, and whether it tests the requirement is a reviewer's, or [Verdict](https://github.com/ArtJack/verdict)'s. It does not judge whether the
 code does what a requirement says. No tool that does not read the code could.
+
+## `gitdone eta`: when, if you ask
+
+Experimental. A percent is a measurement, and a date is a guess from one, so until 1.0.0 the date shows only when somebody asks: `gitdone eta`, `chart --burndown` and the MCP `eta` tool. It says what it is every time. To put it beside the percent in one project, say so in its plan:
+
+```json
+"dates": true
+```
+
+The opener then gives the likely date, `add` and `remove` say what they did to it, the Action's comment on a pull request gives it and publishes `burndown.svg`, and `portfolio` and `doctor` show it. A mistake in that key is said as a note, and it stops nothing.
+
+
+<!-- eta:start -->
+```text
+Likely done Jun 23 on Live rows alone, or Apr 14 with all work: a line through the last 28 days, not a promise.
+
+              Likely  85% sure  Left      A day
+  Live alone  Jun 23  Jul 31    12 rows   0.11
+  All work    Apr 14  Apr 29    8.7 rows  0.21
+
+Scope now: 16 rows, strict 25%, weighted 46%.
+Rows moved on 6 of 28 days.
+Scope: 5 rows added, 0 taken out in that time.
+Deadline Apr 15: 69 days late on Live rows alone, 1 day early with all work. It needs 0.28 Live rows a day, or 0.2 of all work from here.
+  Live █████░░░░░░░░░░░░░░░ 25%
+  Work █████████░░░░░░░░░░░ 46%
+  Time ███████████░░░░░░░░░ 54%, Jan 12 to Apr 15
+```
+<!-- eta:end -->
+
+Two lines, as the percent has strict and weighted. **Live alone** is the line through rows reaching Live, which git holds to a commit on the default branch. **All work** also credits
+what stopped short of it, at the plan's weights, and a commit can mark seven rows Partial with a word each. The gap between the dates is work short of Live, and it means what the gap between the two percents means.
+
+**What is left:** a Live row leaves nothing. With all work, a Partial row at 0.4 leaves 0.6, and a row not built leaves all of it.
+
+**The pace** is what moved existing rows, per calendar day, over the last 28 days (`--days`), or over the table's life if that is shorter. It comes from the table's history along this branch's first
+parents, by the dates the commits keep, so a rebase moves nothing. A day when nothing moved counts, because the time passed. A row moving backwards counts against it. Each line of the table can be checked by hand: what is left over the pace is the likely date.
+
+**What a table says of the past is not pace.** Its first day is where the project stood, and so is a row reaching Live on commits or tags from before the table began: bringing a project under a tracker a row at a time gives it a starting line and not a speed, and `eta` says how many rows it set aside. A pull request's date cannot be read offline, and a row marked Partial or Built cites no commit, so those still count: cite a commit or a tag to keep old work out. The burn-up and the candle draw every step, because they are the record.
+
+**A row added or taken out is not pace.** It changes what is left, and so the date. That is the point: with `"dates": true`, `gitdone add` and `gitdone remove` say what they just did, and so does the Action's comment on a pull
+request that changes the scope. A feature's cost in days is on the table at the moment someone decides to take it.
+
+<!-- add:start -->
+```console
+$ gitdone add "Self-service printing"
+added row 17
+That moves the likely date on Live rows alone, +10 days, Jun 23 to Jul 3, and with all work, +5 days, Apr 14 to Apr 19.
+```
+<!-- add:end -->
+
+**The range** comes from the pace's own spread. The 85% date is where 85% of futures with the same days, drawn at random, have finished: a closed form takes the sum of many days as normal, a test holds it to a
+real resampling, and so the same history on the same day gives the same words. A pace that came in one burst gets a wide range, and the words say when one day made most of it.
+
+**Scope that keeps growing,** on more than one day, changes what the date means. The headline then says "if the scope stops growing", and `eta` gives the two rates: rows a day of scope against rows a day of work.
+If the scope grows as fast as the work moves, it says the work never catches up.
+
+**No date is an answer.** Under three days of movement, there is no line to draw. With nothing moved in the window, it says when the table last changed. If rows moved and went back as far, it says that. Past
+ten years, it says that. A shallow clone has lost the history, and it says that too.
+
+**A deadline** is `"deadline": "2026-12-01"` in the plan, and `"start"` if the table is younger than the work. Against it, `eta` says how late on each line and what pace each needs, and burns time against work
+on the bars. The view states the deadline, because that is the plan's word, so after setting or moving it run `gitdone render --write`, as after any edit to what the view shows. The view never states the forecast, because that changes with the day and the gate compares the view byte for byte. A moved deadline is said out loud by the hook and the Action. With groups, the opener and the view give each group's percent, and `eta` and `portfolio` count all of them and say "all groups". `eta --group` gives one group's.
+
+**In the plan's order:** a workstream is a named set of rows in the plan, and `order` says which comes first:
+
+```json
+"workstreams": [{"id": "P1", "name": "Get paid", "rows": "3-5", "needs": "a Stripe test account"}, {"id": "P2", "name": "Launch", "rows": [6, 9]}],
+"order": ["P1", "P2"]
+```
+
+`eta` reads the order as a sequence and dates each one, with all work. That is a roadmap with dates, and it is as good as the order is. `next` lists the first one with something open. With no workstreams, `next` lists the table's first five open rows.
+
+### What the date cannot tell
+
+It is a line through the past. It knows nothing about what a row costs, so it treats them alike, and a big one will surprise it. A table moved in one sitting
+makes a poor pace. A table moved and rewritten in one commit starts a new history, because that is how git sees it. Use it for the decision it can inform: cut the scope, or move the date. Do not promise it to anyone in the words of a calendar.
+
+### The candle
+
+```bash
+gitdone chart --burndown --out burndown.svg
+```
+
+What is left over time, on both lines. It burns down with the work and steps up when the scope grows, with the change marked, or when a row goes back. Past today it has each line's date, the range,
+and with a deadline, the line it would take to make it. The same history on the same day gives the same bytes. With `publish-branch` set and `"dates": true`, [the Action](ci.md) publishes it as `burndown.svg` beside the badge. Plain `chart` stays the
+burn-up: the record, with no forecast on it.
+
+<img src="img/bramble-burndown.svg" width="640" alt="A burn-down for a fictional project: rows left over time, a step up when the scope grew, a dashed line through the pace to a likely date, a shaded range, and a deadline.">

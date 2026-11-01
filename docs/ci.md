@@ -32,18 +32,19 @@ On a pull request that touches the plan, the table or the view, it:
 
 - runs the gate, strict by default, and fails the job on what the gate fails on;
 - puts each finding on its row's line in the pull request's diff;
-- keeps one comment up to date with the numbers, what moved against the base, where its commits went, what it does to the scope and the date, and what the gate found;
+- keeps one comment up to date with the numbers, what moved against the base, where its commits went, what it does to the scope, and what the gate found;
 - says out loud when the change touches the gate's own rules: the kinds, the default branch, the repository, the evidence pattern;
 - writes the same to the job summary.
 
 A pull request that touches none of those is left alone, so a tracker's old warnings never block unrelated work, with where its commits went, and any requirement no row names, in the run's log and summary. Set
 `always: true` to judge every pull request.
 
-On a push, with `publish-branch` set (and `contents: write`), it commits `badge.svg`, `badge.json`, `burnup.svg`, `burnup.csv` and `burndown.svg` to that
-branch without touching the work tree, and your README can show them:
+On a push, with `publish-branch` set (and `contents: write`), it commits `badge.svg`, `badge.json`, `scale.svg`, `burnup.svg` and `burnup.csv` to that
+branch without touching the work tree, and your README can show them. A plan with `"dates": true` also gets the date in the comment and `burndown.svg` on the branch.
 
 ```markdown
 ![status](https://raw.githubusercontent.com/OWNER/REPO/status-badges/badge.svg)
+![how far along](https://raw.githubusercontent.com/OWNER/REPO/status-badges/scale.svg)
 ![burn-up](https://raw.githubusercontent.com/OWNER/REPO/status-badges/burnup.svg)
 ```
 

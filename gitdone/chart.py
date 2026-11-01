@@ -2,6 +2,7 @@
 
 The burn-up has three lines on one axis, in rows: the scope, what is weighted done, what is strictly done. It is the record, so it makes no
 forecast. The burn-down is the candle: what is left over time, up when the scope grew, with `eta`'s line through it, labelled as a line.
+The scale is the table today, one bar for each part of it, and it reads no history.
 Standard library only, so it can run wherever the engine runs.
 """
 import datetime
@@ -22,6 +23,9 @@ MOST_SCOPE_MARKS = 6
 SCOPE_MARK_GAP = 28
 HORIZON_FACTOR, HORIZON_DAYS = 3, 60  # how far past today the axis follows a line, so that a far date does not flatten the record
 TOO_MUCH_HISTORY = "Only the newest part of the table's history was read: there is too much of it."
+SCALE_TOP, SCALE_ROW, SCALE_BAR_X, SCALE_BAR_WIDTH = 92, 27, 290, 340
+SCALE_STRICT_X, SCALE_WEIGHTED_X = 680, 744
+MOST_SCALE_ROWS, SCALE_LONGEST_LABEL = 30, 40
 
 # The palette passes the dataviz six-check validator in both modes; the scope line is neutral ink, not a third hue.
 STYLE = """
@@ -206,6 +210,78 @@ def svg(items, title):
     return "\n".join(out) + "\n"
 
 
+def scale_rows(plan, table, group=None):
+    """[{label, rows, strict_rows, strict, weighted, part}]: each group, and each of its domains when it has more than one. `part` marks a domain."""
+    top = plan.strict_kind.name
+
+    def entry(label, rows, part):
+        count = tables.counts(rows, plan.kind_names)[top]
+        return {"label": render.one_line(label), "rows": len(rows), "strict_rows": count, "strict": count / len(rows) if rows else 0.0,
+                "weighted": tables.score(rows, plan.weights), "part": part}
+    out = []
+    for g in [plan.group(group)] if group else plan.effective_groups(table):
+        out.append(entry(g.label, tables.group_rows(table, g), False))
+        domains = [d for d in table.domains if d.n in set(g.domains)]
+        if len(domains) > 1:
+            out += [entry(f"{d.n}. {d.name}", d.rows, True) for d in domains]
+    return out
+
+
+def scale_csv(rows):
+    return "label,rows,strict_rows,strict,weighted\n" + "".join(
+        ",".join((_csv_cell(r["label"]), str(r["rows"]), str(r["strict_rows"]), f"{r['strict']:.4f}", f"{r['weighted']:.4f}")) + "\n" for r in rows)
+
+
+def _csv_cell(words):
+    return '"' + words.replace('"', '""') + '"' if any(c in words for c in ',"') else words
+
+
+def _scale_bar(y, height, share, color):
+    if share <= 0:
+        return []
+    width = max(SCALE_BAR_WIDTH * share, height)  # the smallest share still shows, as a dot
+    return [f'<rect x="{SCALE_BAR_X}" y="{y - height / 2:g}" width="{width:.1f}" height="{height}" rx="{height / 2:g}" fill="var(--{color})"/>']
+
+
+def scale(plan, table, group=None):
+    """How far along each part is, on one scale: weighted behind, strict in front, so the gap between them is work that exists and has not shipped.
+    It is the table today, so the same table gives the same bytes, whatever the day.
+    """
+    rows = scale_rows(plan, table, group)
+    shown = rows[:MOST_SCALE_ROWS]
+    more = len(rows) - len(shown)
+    height = SCALE_TOP + SCALE_ROW * (len(shown) + (1 if more else 0)) - 2
+    title = render.one_line(plan.title)
+    words = "; ".join(f"{r['label']}: strict {render.pct(r['strict'])}, {r['strict_rows']} of {r['rows']} rows, weighted {render.pct(r['weighted'])}" for r in rows if not r["part"])
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {height}" width="{WIDTH}" height="{height}" role="img" aria-labelledby="t d">',
+           f'<title id="t">{escape(title)}: how far along</title>', f'<desc id="d">{escape(words)}</desc>', f"<style>{STYLE}</style>",
+           f'<rect x=".5" y=".5" width="{WIDTH - 1}" height="{height - 1}" rx="8" fill="var(--surface)" stroke="var(--edge)"/>',
+           f'<text class="title" x="16" y="28">{escape(title)}: how far along</text>',
+           "<text x=\"16\" y=\"47\">Strict counts what is on the default branch. Weighted also credits what stopped short of it, at the plan's weights.</text>"]
+    legend_x = 16
+    for name, color in (("Strict", "strict"), ("Weighted", "weighted")):
+        out.append(f'<rect x="{legend_x}" y="61" width="14" height="3" rx="1.5" fill="var(--{color})"/>')
+        out.append(f'<text x="{legend_x + 19}" y="67">{name}</text>')
+        legend_x += 19 + 8 * len(name) + 12
+    out.append(f'<text class="tick" x="{SCALE_STRICT_X}" y="67" text-anchor="end">Strict</text>')
+    out.append(f'<text class="tick" x="{SCALE_WEIGHTED_X}" y="67" text-anchor="end">Weighted</text>')
+    for at, r in enumerate(shown):
+        y = SCALE_TOP + SCALE_ROW * at
+        bar_height = 8 if r["part"] else 12
+        label = r["label"] if len(r["label"]) <= SCALE_LONGEST_LABEL else r["label"][:SCALE_LONGEST_LABEL - 1] + "…"
+        out.append(f'<text x="{28 if r["part"] else 16}" y="{y + 4}"{"" if r["part"] else " class=" + chr(34) + "value" + chr(34)}>{escape(label)}</text>')
+        out.append(f'<rect x="{SCALE_BAR_X}" y="{y - bar_height / 2:g}" width="{SCALE_BAR_WIDTH}" height="{bar_height}" rx="{bar_height / 2:g}" fill="var(--grid)"/>')
+        out += _scale_bar(y, bar_height, r["weighted"], "weighted") + _scale_bar(y, bar_height, r["strict"], "strict")
+        out.append(f'<text class="value" x="{SCALE_STRICT_X}" y="{y + 4}" text-anchor="end">{render.pct(r["strict"])}</text>')
+        out.append(f'<text class="value" x="{SCALE_WEIGHTED_X}" y="{y + 4}" text-anchor="end">{render.pct(r["weighted"])}</text>')
+        tip = f"{r['label']}: {r['strict_rows']} of {r['rows']} rows strict, {render.pct(r['weighted'])} weighted"
+        out.append(f'<rect x="0" y="{y - SCALE_ROW / 2:g}" width="{WIDTH}" height="{SCALE_ROW}" fill="transparent"><title>{escape(tip)}</title></rect>')
+    if more:
+        out.append(f'<text x="16" y="{SCALE_TOP + SCALE_ROW * len(shown) + 4}">and {more} more. `chart --scale --json` has them all.</text>')
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
 def _too_much(items):
     return TOO_MUCH_HISTORY if getattr(items, "newest_only", False) else ""
 
@@ -267,7 +343,7 @@ def burndown(items, title, found, words):
     needed = bool(deadline and today < deadline <= edge and left_now)
     scope_words = "A step up is scope, marked with its size, or a row going back. Either moves the date." + (" Dotted: what the deadline needs." if needed else "")
     kind = " ".join(str(live.get("kind", "Live")).split())
-    subtitle = f"Rows left, in blue on {kind} rows alone, in orange with all work, from the table's git history."
+    subtitle = f"Rows left: blue on {kind} rows alone, orange with all work."
     if _too_much(items):
         subtitle = _too_much(items)
     elif likely:

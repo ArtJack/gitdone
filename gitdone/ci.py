@@ -138,17 +138,18 @@ def _when_and_scope(plan, base):
                     said.append("adds rows " + ", ".join(str(n) for n in changed["added"]))
                 if changed["removed"]:
                     said.append("takes out rows " + ", ".join(str(n) for n in changed["removed"]))
-                out.append("**Scope:** this " + " and ".join(said) + "." + (f" {changed['date_moved']}" if changed["date_moved"] else ""))
-        found = forecast.data(plan)
-        if found["state"] in ("dated", "stalled"):
-            out.append(f"**When:** {forecast.headline(found)}")
-        if found["deadline"]:
-            out.append(f"**{forecast._deadline_words(found)}**")
+                out.append("**Scope:** this " + " and ".join(said) + "." + (f" {changed['date_moved']}" if plan.dates and changed["date_moved"] else ""))
+        if plan.dates:
+            found = forecast.data(plan)
+            if found["state"] in ("dated", "stalled"):
+                out.append(f"**When:** {forecast.headline(found)}")
+            if found["deadline"]:
+                out.append(f"**{forecast._deadline_words(found)}**")
         if plan.requirements:
             without = requirements.coverage(plan, tables.load_clean(plan))["without"]
             if without:
                 places = ", ".join(_in_code(item.where()) for item in without[:5]) + (f", and {len(without) - 5} more" if len(without) > 5 else "")
-                out.append(f"**Requirements with no row:** {places}. The percent and the date leave them out.")
+                out.append(f"**Requirements with no row:** {places}. The percent leaves them out.")
     except Exception:
         return []
     return ["\n\n".join(out), ""] if out else []
@@ -215,10 +216,12 @@ def publish(repo, branch, files, message):
 def badge_files(plan, table):
     from . import forecast
     points = chart.points(plan)
-    found = forecast.data(plan)
-    return {"badge.svg": badge.svg(plan, table), "badge.json": json.dumps(badge.endpoint(plan, table)) + "\n",
-            "burnup.svg": chart.svg(points, plan.title), "burnup.csv": chart.csv_text(points),
-            "burndown.svg": chart.burndown(points, plan.title, found, forecast.headline(found))}
+    files = {"badge.svg": badge.svg(plan, table), "badge.json": json.dumps(badge.endpoint(plan, table)) + "\n",
+             "burnup.svg": chart.svg(points, plan.title), "burnup.csv": chart.csv_text(points), "scale.svg": chart.scale(plan, table)}
+    if plan.dates:
+        found = forecast.data(plan)
+        files["burndown.svg"] = chart.burndown(points, plan.title, found, forecast.headline(found))
+    return files
 
 
 def _append(env_name, text):

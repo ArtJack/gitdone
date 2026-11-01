@@ -43,7 +43,7 @@ The plugin is thin: a shim over the engine it bundles, the two skills, and one S
 | `/gitdone:status mark <row> <kind> <words>` | Moves one row short of Live |
 | `/gitdone:status rows` | Lists what is left |
 | `/gitdone:status next` | What to work on now |
-| `/gitdone:status eta` or `focus` or `matrix` | The date, where the commits went, the traceability matrix |
+| `/gitdone:status focus` or `matrix` or `eta` | Where the commits went, the traceability matrix, or the experimental date |
 | `/gitdone:status week [since]` | Prints the delta line |
 | `/gitdone:status check` or `doctor` | The gate, or the health check |
 
@@ -66,7 +66,7 @@ Or, in a client's JSON config:
 {"mcpServers": {"gitdone": {"command": "uvx", "args": ["gitdone", "mcp"]}}}
 ```
 
-It is read-only: `status`, `rows`, `evidence`, `check`, `week`, `portfolio`. Each takes an optional `project`. It has no dependency,
+It is read-only: `status`, `rows`, `evidence`, `check`, `week`, `focus`, `next`, `matrix`, `eta` and `portfolio`. Each takes an optional `project`. It has no dependency,
 and a test walks its imports to prove that nothing able to write a file is reachable from it.
 
 ## What to tell an agent

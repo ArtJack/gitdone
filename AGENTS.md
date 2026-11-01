@@ -2,7 +2,7 @@
 
 ## If you are here to use it in a project
 
-- `gitdone` prints where the project stands: strict and weighted percent, the next workstream, what it needs, the likely date, and where the recent commits went.
+- `gitdone` prints where the project stands: strict and weighted percent, the next workstream, what it needs, and where the recent commits went.
 - `gitdone next` lists the rows to work on now. Work on those, and name the row in the commit message (`row 12`). Anything else is a change of scope: say so before starting it.
 - `status-table.md` is the only place a status changes. `STATUS.md` is generated, so never edit it by hand.
 - A row moves to Live only through `gitdone shipped <row> <commit or PR>`, after the work is on the default branch: the remote's, when
@@ -10,7 +10,7 @@
   If it refuses, report the refusal. Do not reword the row to get past it, do not pass `--allow-unverified`, and do not commit with
   `--no-verify`.
 - "Done" in a message means the row moved. Say what the gate said, not what you believe.
-- A date comes only from `gitdone eta`, with its range and its words. If it has none, there is none.
+- A date comes only from `gitdone eta`, when someone asks, with its range and its words. If it has none, there is none.
 - `--json` on `check`, `opener`, `next`, `eta`, `focus`, `matrix`, `week`, `where`, `rows`, `report` and `doctor` is for you. So is `gitdone mcp`, a read-only
   server over stdio.
 

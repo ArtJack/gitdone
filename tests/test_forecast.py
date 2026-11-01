@@ -415,6 +415,7 @@ class Commands(ProjectCase):
     def test_add_says_what_it_did_to_the_date(self):
         self.moving()
         self.plain_plan()
+        self.change_plan(dates=True)
         code, out, err = self.cli("add", "A new thing", "--domain", "1")
         self.assertEqual(code, 0, err)
         self.assertIn("That moves the likely date with all work, +", out)
@@ -422,6 +423,7 @@ class Commands(ProjectCase):
     def test_remove_says_what_it_did_to_the_date(self):
         self.moving()
         self.plain_plan()
+        self.change_plan(dates=True)
         code, out, err = self.cli("remove", "16")
         self.assertEqual(code, 0, err)
         self.assertIn("That moves the likely date with all work, -", out)
@@ -434,12 +436,14 @@ class Commands(ProjectCase):
 
     def test_the_opener_says_the_date(self):
         self.moving()
+        self.change_plan(dates=True)
         code, out, err = self.cli("opener")
         self.assertEqual(code, 0, err)
         self.assertIn("likely done", out.lower())
 
     def test_the_opener_as_data_keeps_the_date_apart_from_the_warnings(self):
         self.moving()
+        self.change_plan(dates=True)
         code, out, err = self.cli("opener", "--json")
         self.assertEqual(code, 0, err)
         data = json.loads(out)

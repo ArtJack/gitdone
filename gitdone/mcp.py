@@ -30,7 +30,7 @@ TOOLS = [
     _tool("check", "Run the gate: is the view true, do the counts sum, does each status have its evidence. Writes nothing.", OFFLINE),
     _tool("week", "What moved since a date, a span like '2 weeks', or a commit, from the table's git history. Default: 7 days.",
           {"since": {"type": "string"}}),
-    _tool("eta", "When it will be done if the work goes on as it has: a line through the table's git history, with a range, the scope's effect and the deadline. Quote its words, and say it is a line."),
+    _tool("eta", "When it will be done if the work goes on as it has: a line through the table's git history, with a range, the scope's effect and the deadline. Experimental: give a date only when asked when it will be done, quote its words, and say it is a line."),
     _tool("focus", "Where the recent commits went: on plan, upkeep or off plan, with the reason for each. A signal, never a gate.",
           {"days": {"type": "integer", "description": "How many days to read. Default: 14."}}),
     _tool("next", "What to work on now: the next workstream's open rows. Anything else is a change of scope, so say so before starting it."),

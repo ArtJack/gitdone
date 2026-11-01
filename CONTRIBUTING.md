@@ -29,7 +29,7 @@ reproduce.
 ## What is not
 
 - Reading code to decide a status. A status is a person's claim held to its evidence, and that line is structural.
-- A date forecast. No percentage is a date.
+- A date read off a percent. No percentage is a date: `eta` is a line through the past, and it says so.
 - A runtime dependency.
 - A check that cannot fail.
 

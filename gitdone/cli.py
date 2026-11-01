@@ -109,12 +109,12 @@ def _gate_line(plan):
 
 
 def _time_lines(plan, table):
-    """The date and where the commits went, for whoever opens the project. A session must start whatever is wrong with either, so neither may
-    cost the lines above it.
+    """Where the commits went, and the date if the plan asks for one, for whoever opens the project. A session must start whatever is wrong with
+    either, so neither may cost the lines above it.
     """
     from . import focus, forecast, requirements
     lines = []
-    for step in (forecast.opener_line, focus.opener_line, lambda p: requirements.opener_line(p, table)):
+    for step in ([forecast.opener_line] if plan.dates else []) + [focus.opener_line, lambda p: requirements.opener_line(p, table)]:
         try:
             line = step(plan)
         except Exception:
@@ -177,7 +177,8 @@ def cmd_opener(args):
                      "time": [line for line in lines[1:] if not line.startswith("⚠ ") and line != verdict.release_line(plan)],
                      "warnings": [line[2:] for line in lines[1:] if line.startswith("⚠ ")]})
         return 0
-    print("\n".join(_opener_lines(plan, with_gate=True)))
+    lines = _opener_lines(plan, with_gate=True)
+    print("\n".join(lines[:1] + render.scale_lines(plan, tables.load_clean(plan)) + lines[1:]))
     return 0
 
 
@@ -293,6 +294,8 @@ def _refusable(step):
 
 def _left_now(plan):
     from . import forecast
+    if not plan.dates:
+        return None
     try:
         return forecast.left_now(plan)
     except PlanError:
@@ -497,6 +500,8 @@ def cmd_eta(args):
         _print_json(found)
     else:
         print(forecast.text(found))
+        if not plan.dates:
+            print(forecast.ASKED_FOR)
     return 0
 
 
@@ -557,9 +562,29 @@ def _burndown(args, plan, items):
     return 0
 
 
+def _scale(args, plan):
+    from . import chart
+    if args.burndown:
+        raise PlanError("--scale and --burndown are two different pictures: ask for one")
+    table = tables.load_clean(plan)
+    group = _group(plan, args.group)
+    if args.json:
+        _json_to(args.out, chart.scale_rows(plan, table, group))
+    elif args.csv:
+        _write_or_print(args.out, chart.scale_csv(chart.scale_rows(plan, table, group)))
+    elif not args.out and sys.stdout.isatty():
+        print("\n".join(render.scale_lines(plan, table)))
+        print("To draw it: gitdone chart --scale --out scale.svg")
+    else:
+        _write_or_print(args.out, chart.scale(plan, table, group))
+    return 0
+
+
 def cmd_chart(args):
     from . import chart
     plan = _plan(args)
+    if args.scale:
+        return _scale(args, plan)
     items = chart.points(plan, group=_group(plan, args.group))
     if items.newest_only:
         print(chart.TOO_MUCH_HISTORY, file=sys.stderr)
@@ -745,12 +770,13 @@ def _parser():
     sub = command("doctor", cmd_doctor, "Check everything the tracker needs here, on one screen. Changes nothing. Exit 1 if something is broken.",
                   as_data="the same as data")
     sub.add_argument("--offline", action="store_true", help="do not ask gh whether it is logged in")
-    sub = command("chart", cmd_chart, "A burn-up from the status table's git history, with no forecast; or with --burndown, what is left and eta's line through it.", as_data="the numbers as data")
+    sub = command("chart", cmd_chart, "A burn-up from the status table's git history, with no forecast; with --scale, how far along each part is today; or with --burndown, what is left and eta's line through it.", as_data="the numbers as data")
     sub.add_argument("--out", help="write here instead of printing")
     sub.add_argument("--group", help="only this group's rows")
     sub.add_argument("--csv", action="store_true", help="the numbers as CSV")
     sub.add_argument("--burndown", action="store_true", help="what is left over time, with the likely date, the range and the deadline")
-    sub = command("eta", cmd_eta, "When it will be done if the work goes on as it has: a line through the table's git history, with a range. Adding a row moves it, and so does dropping one.", as_data="the same as data")
+    sub.add_argument("--scale", action="store_true", help="how far along each part is today, one bar each")
+    sub = command("eta", cmd_eta, "Experimental. When it will be done if the work goes on as it has: a line through the table's git history, with a range. Adding a row moves it, and so does dropping one.", as_data="the same as data")
     sub.add_argument("--group", help="only this group's rows")
     sub.add_argument("--days", type=int, default=28, help="how many days of pace to read (default: 28)")
     sub = command("focus", cmd_focus, "Where the commits went: on plan, upkeep, or off plan. A signal, never a gate.", as_data="the same as data")

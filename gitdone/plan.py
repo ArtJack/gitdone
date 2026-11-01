@@ -64,7 +64,7 @@ def _typed(data, key, expected, default):
 
 KIND_KEYS = {"name", "short", "phrase", "weight", "evidence"}
 FOCUS_KEYS = {"paths", "upkeep", "not_upkeep"}
-SIGNAL_KEYS = ("deadline", "start", "requirements", "focus")  # what only `eta`, `focus` and `matrix` read. A mistake here is said, and it stops no commit
+SIGNAL_KEYS = ("dates", "deadline", "start", "requirements", "focus")  # what only `eta`, `focus` and `matrix` read. A mistake here is said, and it stops no commit
 
 
 def _no_duplicates(pairs):
@@ -200,6 +200,7 @@ class Plan:
         self.verdict_state = self._path(verdict_state) if verdict_state else None
         if self.verdict_state and _not_a_regular_file(self.verdict_state):
             raise PlanError(f"verdict_state: {verdict_state} is not a regular file")
+        self.dates = self._signal_switch(data, "dates")
         self.deadline = self._signal_day(data, "deadline")
         self.start = self._signal_day(data, "start")
         self.requirements = self._signal_files(data)
@@ -246,6 +247,15 @@ class Plan:
         self.sections = _typed(data, "sections", list, None) or self._default_sections()
         for section in self.sections:
             self._check_section(section)
+
+    def _signal_switch(self, data, key):
+        value = data.get(key)
+        if value is None:
+            return False
+        if not isinstance(value, bool):
+            self.signal_problems.append(f"{key}: expected true or false, got {value!r}, so it is off")
+            return False
+        return value
 
     def _signal_day(self, data, key):
         if key not in data or data[key] is None:

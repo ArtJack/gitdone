@@ -13,7 +13,7 @@
 - [The status table](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/status-table.md)
 - [The plan file](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/plan-file.md)
 - [Evidence and the gate](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/gate.md)
-- [Time, focus and traceability](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/timeline.md): `eta`, `focus`, `next`, `matrix`
+- [Focus, traceability and the date](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/timeline.md): `focus`, `next`, `matrix`
 - [JSON output](https://raw.githubusercontent.com/ArtJack/gitdone/main/docs/json.md)
 - [Changelog](https://raw.githubusercontent.com/ArtJack/gitdone/main/CHANGELOG.md)
 

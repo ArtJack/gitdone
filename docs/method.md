@@ -41,7 +41,7 @@ project is further from done than anyone was saying, and shows it early.
 - **Strict** is what an outside reviewer would count: rows that are Live.
 - **Weighted** also credits work short of a release, at weights the plan states, so that the number can be argued with.
 - **No percentage is a date.** Only a pace can say when. `eta` draws a line through the table's own history, gives a range, and says in the same
-  sentence that it is a line. It is there for one decision: cut the scope, or move the date. The view never shows it, and the burn-up stays a record.
+  sentence that it is a line. It is there for one decision: cut the scope, or move the date. It is experimental and shows only when asked for, unless a plan says `"dates": true`. The view never shows it, and the burn-up stays a record.
 
 Strict alone hides real work and punishes a project with a long review queue. Weighted alone lets a project look nearly done
 for a year. The gap between them is itself a signal: work built and not shipped.

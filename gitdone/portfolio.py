@@ -36,12 +36,14 @@ def _numbers(directory):
     top = sum(1 for r in rows if r.kind == plan.strict_kind.name)
     following = render.opener_data(plan, table)["next"]
     report = gate.report(plan, offline=True)
+    likely, likely_words = None, ""
     try:
-        found = forecast.data(plan)
-        likely = found["likely"]
-        likely_words = forecast._both_dates(found) if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]) else ""
+        if plan.dates:
+            found = forecast.data(plan)
+            likely = found["likely"]
+            likely_words = forecast._both_dates(found) if found["state"] == "dated" and (found["likely"] or found["live"]["likely"]) else ""
     except Exception:  # a tracker outside any repository has no pace, and the rest of its line still stands
-        likely, likely_words = None, ""
+        pass
     return {"likely": likely, "likely_words": likely_words, "all_groups": bool(plan.groups), "title": plan.title, "rows": len(rows), "strict_rows": top, "strict": top / len(rows) if rows else 0.0,
             "weighted": tables.score(rows, plan.weights), "next": following["id"] if following else None,
             "next_name": following["name"] if following else None, "gate": report.result(),
@@ -54,17 +56,19 @@ def scan(roots):
 
 def markdown(entries, today=None):
     today = today or datetime.date.today().isoformat()
+    dated = any(e.get("likely_words") or e.get("likely") for e in entries)  # a column only where a plan asked for a date
+    gap = "|  " * (5 if dated else 4)
     L = [f"# Portfolio (generated {today})", "", "> Read offline from each project's tracker: a pull request is left unverified, and nothing is written.", "",
-         "| Project | Rows | Strict | Weighted | | Likely done | Next | Gate |", "|---|---|---|---|---|---|---|---|"]
+         f"| Project | Rows | Strict | Weighted | |{' Likely done |' if dated else ''} Next | Gate |", "|---" * (8 if dated else 7) + "|"]
     for e in entries:
         if "error" in e:
             first = " ".join(e["error"].split())[:120]
-            L.append(f"| {e['project']} |  |  |  |  |  |  | cannot run: {first} |")
+            L.append(f"| {e['project']} {gap}|  | cannot run: {first} |")
             continue
         following = f"{e['next']} {e['next_name']}".strip() if e["next"] else ""
         gate_words = {"pass": "pass", "warnings": f"pass, {e['missing']} missing", "fail": f"**fail**, {e['contradicted']} contradicted"}.get(e["gate"], e["gate"])
         L.append(f"| {e['project']}{' (all groups)' if e['all_groups'] else ''} | {e['rows']} | {e['strict_rows']} ({render.pct(e['strict'])}) | {render.pct(e['weighted'])} | "
-                 f"`{render.bar(e['weighted'], 10)}` | {render.one_line(e.get('likely_words') or e['likely'] or '')} | {following} | {gate_words} |")
+                 f"`{render.bar(e['weighted'], 10)}` | " + (f"{render.one_line(e.get('likely_words') or e['likely'] or '')} | " if dated else "") + f"{following} | {gate_words} |")
     if not entries:
-        L.append(f"|  |  |  |  |  |  |  | no {POINTER} found |")
+        L.append(f"|  {gap}|  | no {POINTER} found |")
     return "\n".join(L) + "\n"

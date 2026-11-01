@@ -66,10 +66,11 @@ def _time_and_scope(plan, table):
     """Nothing here is broken if it says no: these are what the tracker can tell, not what it needs."""
     from . import forecast, requirements
     out = []
-    try:
-        out.append(_item(OK, "date", forecast.headline(forecast.data(plan))))
-    except Exception as err:
-        out.append(_item(WARN, "date", render.one_line(err)))
+    if plan.dates:
+        try:
+            out.append(_item(OK, "date", forecast.headline(forecast.data(plan))))
+        except Exception as err:
+            out.append(_item(WARN, "date", render.one_line(err)))
     if plan.requirements:
         try:
             found = requirements.coverage(plan, table)
@@ -99,7 +100,7 @@ def run(plan_path, offline=False):
     if problems:
         items.append(_item(FAIL, "table", "; ".join(problems)))
         return items, 1
-    items.append(_item(OK, "table", f"{plan.doc.name}: {len(table.rows)} rows in {len(table.domains)} domains"))
+    items.append(_item(OK, "table", f"{plan.doc.name}: {len(table.rows)} rows in {len(table.domains)} domain{'' if len(table.domains) == 1 else 's'}"))
     if plan.repo is None:
         items.append(_item(WARN, "repo", "the plan names no repo, so no evidence can be verified: set \"repo\": \".\""))
     else:

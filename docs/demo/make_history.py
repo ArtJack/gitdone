@@ -110,6 +110,8 @@ def main(argv=None):
         (repo / "status-table.md").write_text(table_at(body, kinds, with_later), encoding="utf-8")
         git(repo, "add", "status-table.md", "plan.json")
         git(repo, "commit", "-q", "--no-verify", "-m", f"Status on {date}", date=date)
+    for branch in ("reading-lists", "renewals"):  # what the rows built on branches name
+        git(repo, "branch", branch)
     return 0
 
 

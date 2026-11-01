@@ -325,6 +325,15 @@ def opener_data(plan, table):
     return {"groups": groups, "next": following, "all_workstreams_done": bool(plan.order) and w is None}
 
 
+def scale_lines(plan, table, width=16):
+    """The percent as a scale, for a person at a terminal: one line per group, strict and weighted side by side."""
+    groups = opener_data(plan, table)["groups"]
+    labels = [one_line(g["label"])[:20] for g in groups]
+    room = max((len(label) for label in labels), default=0)
+    return [f"  {label:<{room}}  strict {bar(g['strict'], width)} {pct(g['strict']):>4}  weighted {bar(g['weighted'], width)} {pct(g['weighted']):>4}"
+            for label, g in zip(labels, groups)]
+
+
 def opener(plan, table):
     """One line: strict and weighted per group, the next workstream in order, what it needs."""
     data = opener_data(plan, table)

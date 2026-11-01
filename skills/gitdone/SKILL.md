@@ -21,20 +21,20 @@ The command is `gitdone`. If it is not installed, `uvx gitdone` runs it with not
 | What each claim rests on | `gitdone report --offline` |
 | Everything the tracker needs, on one screen | `gitdone doctor` |
 | What to work on now | `gitdone next` |
-| When it will be done if the work goes on as it has | `gitdone eta` |
 | Where the recent commits went: on plan, upkeep, off plan | `gitdone focus` |
 | Requirement to row to evidence to tests | `gitdone matrix --offline` |
+| When it will be done, if the person asks | `gitdone eta` |
 
 Add `--json` to any of these for data.
 
 Answer from what these print. Do not estimate a percentage from reading the code, and do not turn a percentage into a date. The only
-date to quote is the one `gitdone eta` prints, with its range and its words: it is a line through the past, not a promise. If it has no date, there is none.
+date to quote is the one `gitdone eta` prints, when the person asks, with its range and its words: it is an experimental line through the past, not a promise. If it has no date, there is none.
 
 ## Hold the line
 
 Start from `gitdone next`. Work on those rows, and name the row in the commit message (`row 12`), so that the work traces to it.
 If what you are about to do is on no row, say so before you start it, and let the person decide: if it belongs, `gitdone add` puts it in
-the scope and says what that does to the date. If `gitdone focus` shows work drifting off plan, say that too, in its own numbers. A requirement no row names: `gitdone link <row> <id>` if a row holds it, and that is the person's call.
+the scope, and the percent moves. If `gitdone focus` shows work drifting off plan, say that too, in its own numbers. A requirement no row names: `gitdone link <row> <id>` if a row holds it, and that is the person's call.
 
 ## Change a row only like this
 

@@ -13,7 +13,7 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 </style>
 <rect x=".5" y=".5" width="759" height="339" rx="8" fill="var(--surface)" stroke="var(--edge)"/>
 <text class="title" x="16" y="28">Bramble Kiosk: burn-down</text>
-<text x="16" y="47">Rows left, in blue on Live rows alone, in orange with all work, from the table's git history. Dashed: a line through the last 28 days, not a promise.</text>
+<text x="16" y="47">Rows left: blue on Live rows alone, orange with all work. Dashed: a line through the last 28 days, not a promise.</text>
 <text x="16" y="67">A step up is scope, marked with its size, or a row going back. Either moves the date. Dotted: what the deadline needs.</text>
 <line x1="44" x2="578" y1="310.0" y2="310.0" stroke="var(--axis)"/>
 <text class="tick" x="36" y="314.0" text-anchor="end">0</text>

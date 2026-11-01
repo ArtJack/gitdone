@@ -399,4 +399,4 @@ def opener_line(plan, table):
     if not count:
         return None
     first = found["without"][0]
-    return f"⚠ {count} requirement{'' if count == 1 else 's'} {'has' if count == 1 else 'have'} no row, so the percent and the date may leave {'it' if count == 1 else 'them'} out: {first.label()[:60]} ({first.where()})"
+    return f"⚠ {count} requirement{'' if count == 1 else 's'} {'has' if count == 1 else 'have'} no row, so the percent may leave {'it' if count == 1 else 'them'} out: {first.label()[:60]} ({first.where()})"

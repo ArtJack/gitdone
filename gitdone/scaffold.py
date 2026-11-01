@@ -56,10 +56,10 @@ AGENTS_SNIPPET = f"""{AGENTS_START}
 
 This project tracks completion with [gitdone](https://github.com/ArtJack/gitdone).
 
-- At the start of a session, run `gitdone`. It prints where the project stands, what comes next, the likely date and where the
+- At the start of a session, run `gitdone`. It prints where the project stands, what comes next and where the
   recent commits went. `gitdone next` lists the rows to work on now.
 - Work on those rows. Name the row in the commit message (`row 12`), so that the work traces to it. Work on no row is a change of scope:
-  say so before starting it. `gitdone add "<what it is>"` puts it in the plan, and it says what that does to the date.
+  say so before starting it. `gitdone add "<what it is>"` puts it in the plan.
 - `status-table.md` is the only place a status changes. `STATUS.md` is generated: never edit it by hand.
 - When work is on the default branch, move its row with `gitdone shipped <row> <commit or PR>`. Use
   `gitdone mark <row> <kind>` for anything short of that.

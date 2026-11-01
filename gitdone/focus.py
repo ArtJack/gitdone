@@ -1,6 +1,6 @@
 """`focus`: where the commits went. Each one advanced a row, kept the project running, or did neither, and that last kind is how one month
 becomes three. It is a signal and never a gate: the commit has already happened, and it may have been right. Saying so lets the scope
-change on purpose: `gitdone add` makes the work part of the plan, and the date moves.
+change on purpose: `gitdone add` makes the work part of the plan, and the percent moves.
 
 On plan means someone said so: the message names the row, a row cites the commit, the commit moved the row, a merge is tied to the row, or the plan ties its files to
 the row. What only looks like a row, by its words or its branch's name, is unclear, and it is listed with what is off plan, because a guess must not close a gap. Every answer says why.
@@ -681,7 +681,7 @@ def text(found, show_all=False):
         if key == "unclear" and not found[key]:
             continue
         tail = f"  {tails[key]}" if tails[key] else ""
-        L.append(f"  {label:<8}  {found[key]:>{width}}  {_share(found[key], found['commits']):>4}  {found['lines'][key]:>{breadth},} lines  {_share(found['lines'][key], lines_in_all):>4}{tail}")
+        L.append(f"  {label:<8}  {found[key]:>{width}}  {_share(found[key], found['commits']):>4}  {found['lines'][key]:>{breadth},} {'line ' if found['lines'][key] == 1 else 'lines'}  {_share(found['lines'][key], lines_in_all):>4}{tail}")
     if show_all:
         chosen = [c for c in found["list"] if c["class"] != TRACKER]
         L += ["", "Every commit, newest first:"]
@@ -703,7 +703,7 @@ def text(found, show_all=False):
     if next_words:
         L += ["", next_words]
     if found["off_plan"] or found["unclear"]:
-        L += ["Off plan is not wrong, only unplanned. If it belongs, `gitdone add \"<what it is>\"` puts it in the scope, and the date moves.",
+        L += ["Off plan is not wrong, only unplanned. If it belongs, `gitdone add \"<what it is>\"` puts it in the scope, and the percent moves.",
               "To tie a commit to a row, name the row in its message: `row <number>`."]
     return "\n".join(L)
 
@@ -812,5 +812,5 @@ def next_text(found):
         note = f": {render.one_line(r['note'])[:80]}" if r["note"].strip() else ""
         L.append(f"  {r['row']:>{width}}  {render.one_line(r['name'])} ({render.one_line(r['kind'])}){note}")
     L += ["", f"Name the row in the commit message (row {found['rows'][0]['row']}), so that the work traces to it.",
-          "Work on no row is a change of scope. Say so before starting it: `gitdone add` puts it in the plan, and the date moves."]
+          "Work on no row is a change of scope. Say so before starting it: `gitdone add` puts it in the plan, and the percent moves."]
     return "\n".join(L)

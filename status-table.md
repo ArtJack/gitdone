@@ -27,7 +27,7 @@ from it.
 | 13 | A release workflow by Trusted Publishing that refuses a mismatched tag | Live | It published 0.2.0 to PyPI, the GitHub Release, the `v0` tag and the MCP registry, after stopping two runs at its own test step, before anything was published. *(Live 2026-10-31: tag v0.2.0; was Partial)* |
 | 14 | The name reserved on PyPI | Live | `gitdone` is ours on PyPI. 0.2.0 installs from there with uvx, pip and pipx, on the floor Python too. *(Live 2026-10-31: tag v0.2.0; was Not built)* |
 
-### 3. Onboarding (7)
+### 3. Onboarding (8)
 
 | # | Capability | Status | Note |
 |---|---|---|---|
@@ -38,6 +38,7 @@ from it.
 | 19 | A README that shows before it explains, with real output a test keeps true | Live | The demo is produced by `docs/demo/record.py`. *(Live 2026-10-31: `f0f2b1f`; was Partial)* |
 | 20 | A stranger gets a gated STATUS.md in five minutes from the README alone | Partial | Two readers with no context reached a gated commit, in 1 min 42 s and then 41 s, and what they found is fixed; not yet tried by a person. |
 | 43 | install-ci: the Action in one command | Live | In the first public commit. *(Live 2026-10-31: `f0f2b1f`; was Partial)* |
+| 50 | The README shows the scale on a worked example, every way to install and the whole instruction, in real output, on GitHub and on PyPI | Partial | Written |
 
 ### 4. Visibility (6)
 
@@ -81,12 +82,13 @@ from it.
 | 39 | Listed where people look: awesome lists, a Show HN | Not built | |
 | 40 | A write-up with real numbers | Not built | |
 
-### 8. Time and focus (5)
+### 8. Time and focus (6)
 
 | # | Capability | Status | Note |
 |---|---|---|---|
-| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Live | Nine independent reads; the numbers were checked by hand on real histories. *(Live 2026-11-01: b87f4f4; was Partial)* |
+| 44 | `eta`: a date with its range, from the table's own history, that moves with the scope and answers to a deadline | Live | The numbers were checked by hand on real histories. Experimental: off by default until 1.0.0, and `"dates": true` in a plan turns it on. *(Live 2026-11-01: b87f4f4; was Partial)* |
 | 45 | `focus` and `next`: where the commits went, what comes next, and a hook that says when a commit was off plan | Live | Totals summed by hand on real histories. *(Live 2026-11-01: b87f4f4; was Partial)* |
 | 46 | `matrix`: requirement to row to evidence to tests, with the two gaps said on every run | Live | Read against the real specs of five projects. *(Live 2026-11-01: b87f4f4; was Partial)* |
-| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Live | Published by the Action on a push to main. *(Live 2026-11-01: b87f4f4; was Partial)* |
+| 47 | The burn-down: what is left, up when the scope grew, with the line, the range and the deadline | Live | Published by the Action on a push to main, for a plan with `"dates": true`. *(Live 2026-11-01: b87f4f4; was Partial)* |
 | 48 | The agent rules, the skill and the MCP tools say all of this | Live | All four MCP tools answered in the last read. *(Live 2026-11-01: b87f4f4; was Partial)* |
+| 49 | The scale: bars where the project opens, a picture with one bar for each part, published with the badge | Partial | Built |

@@ -2,7 +2,7 @@
 name = "gitdone"
 dynamic = ["version"]
 description = "A percent done you can defend: strict and weighted completion from one plan file and one status table, each claim held to git."
-# Not README.md: that one is full of links relative to the repository, which resolve to nothing on PyPI.
+# Not README.md: that one is full of links relative to the repository, which resolve to nothing on PyPI. `python3 docs/demo/pypi_readme.py --write` makes this one from it.
 readme = "README-pypi.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -32,6 +32,7 @@ Homepage = "https://github.com/ArtJack/gitdone"
 Repository = "https://github.com/ArtJack/gitdone"
 Issues = "https://github.com/ArtJack/gitdone/issues"
 Changelog = "https://github.com/ArtJack/gitdone/blob/main/CHANGELOG.md"
+Funding = "https://github.com/sponsors/ArtJack"
 
 [project.scripts]
 gitdone = "gitdone.cli:main"
