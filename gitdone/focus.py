@@ -37,9 +37,10 @@ PULL_REQUEST = re.compile(r"(?:\(#|pull request #)(\d{1,9})\b", re.I)
 MERGE_INTO = re.compile(r"^Merged? (.+?) into \S+(.*)$")
 MERGE_REQUEST = re.compile(r"See merge request \S*!(\d{1,9})\b")
 REVERT_SUBJECT = re.compile(r"^revert\b", re.I)
-UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^(?:bump|upgrade|fix|fixes|fixed)\b", re.I)
-ISSUE_IN_A_NOTE = re.compile(r"\bissue\s*#(\d{1,9})\b", re.I)
-ISSUE_IN_A_MESSAGE = re.compile(r"#(\d{1,9})\b")
+UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^bump\b|^fix(?:es)?\b(?!-)|^upgrade\b.*\bto\s+v?\d", re.I)
+ISSUE_IN_A_NOTE = re.compile(r"^\s*issue\s*#(\d{1,9})\b", re.I)  # as `init --from-issues` writes it. `blocked by issue #40` is about something else
+ISSUE_IN_A_MESSAGE = re.compile(r"(?i:\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|see|for|issue)\s+)#(\d{1,9})\b|\(#(\d{1,9})\)")
+LONG_LIVED_BRANCH = re.compile(r"dev|develop|development|next|staging|stage|qa|test|testing|integration|trunk|master|main|prod|production|hotfix|release(?:[-/].*)?", re.I)  # a row citing one says nothing of what else is on it
 MERGED_BRANCH = re.compile(r"^Merge (?:remote-tracking )?branch '(?:origin/)?([^']+)'|^Merge pull request #\d+ from [^/\s]+/(\S+)")
 COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 NUMSTAT = re.compile(r"^(\d+|-)\t(\d+|-)\t(.*)$", re.S)
@@ -48,7 +49,7 @@ TESTS = ("tests/*", "test/*", "spec/*", "specs/*", "__tests__/*", "e2e/*", "cypr
 UPKEEP_FILES = TESTS + ("docs/*", "doc/*", "*/docs/*", "*/doc/*", "*.md", "*.rst", ".github/*", "*/.github/*", ".gitlab-ci.yml", ".gitignore", ".gitattributes", ".editorconfig",
                         ".pre-commit-config.yaml", "LICENSE*", "*.lock", "package-lock.json", "pnpm-lock.yaml", "go.sum", "go.mod", "Makefile", "Dockerfile*",
                         "docker-compose*.yml", "pyproject.toml", "setup.cfg", "tox.ini", "requirements*.txt", "package.json", "tsconfig*.json", "Cargo.toml", "pom.xml", "build.gradle*",
-                        "settings.gradle*", "gradlew*", "mvnw*", ".mvn/*", "*/.mvn/*", "gradle/*", "*/gradle/*", "Gemfile", "composer.json", ".golangci.y*ml", ".eslintrc*", ".prettierrc*")
+                        "settings.gradle*", "gradlew*", "mvnw*", ".mvn/*", "*/.mvn/*", "gradle/wrapper/*", "*/gradle/wrapper/*", "Gemfile", "composer.json", ".golangci.y*ml", ".eslintrc*", ".prettierrc*")
 SOURCE_ROOTS = {"src", "lib", "app", "apps", "pkg", "packages", "services", "internal", "cmd"}
 FEW_WORDS = frozenset("a an and are as at be by for from in into is it its of on or that the this to with add adds added adding update updates "
                       "updated updating fix fixes fixed fixing make makes made making use uses used using change changes changed changing "
@@ -227,7 +228,8 @@ class _Reading:
             for number in ISSUE_IN_A_NOTE.findall(row.note):
                 self.issues.setdefault(int(number), set()).add(row.num)
             for branch in evidence.NOTE_BRANCH.findall(row.note):
-                self.branches.setdefault(branch, set()).add(row.num)
+                if branch != plan.default_branch and not LONG_LIVED_BRANCH.fullmatch(branch):
+                    self.branches.setdefault(branch, set()).add(row.num)
             for claim in evidence.release_claims(plan, row.words()):
                 if claim.kind in ("sha", "bare"):
                     self.cited.append((str(claim.value), row.num))
@@ -249,9 +251,12 @@ class _Reading:
         top = plan.strict_kind.name
         self.born, self.read_from = None, None
         try:
-            steps, self.born, self.read_from = forecast.table_steps(plan, start, today)
+            steps, self.born, self.read_from, set_aside = forecast.table_steps(plan, start, today)
         except PlanError:  # a table outside any repository has no history, and the commits can still be read
-            steps = []
+            steps, set_aside = [], []
+        for n, date, kind in set_aside:
+            if kind == top:
+                self.finished_on[n] = date
         for sha, date, before, after in steps:
             for n in after.keys() & before.keys():
                 if after[n] == top and before[n] != top:
@@ -338,9 +343,9 @@ class _Reading:
             for number in pattern.findall(commit["message"] if table is self.merge_requests else first_line):
                 if int(number) in table:
                     return set(table[int(number)]), "its pull request is cited as evidence"
-        for number in ISSUE_IN_A_MESSAGE.findall(commit["message"]) if self.issues else ():
-            if int(number) in self.issues:
-                return set(self.issues[int(number)]), "it names the issue in the row's note"
+        for one, other in ISSUE_IN_A_MESSAGE.findall(commit["message"]) if self.issues else ():
+            if int(one or other) in self.issues:
+                return set(self.issues[int(one or other)]), NAMES_ITS_ISSUE
         return set(), ""
 
     def looks_like(self, words, date):
@@ -371,7 +376,7 @@ class _Reading:
             rows, because = set(self.moved_by[commit["sha"]]), "it moved the row in the table"
         if rows:
             cites_it = any(commit["sha"].startswith(value) for value, num in self.cited if num in rows)  # a clock ahead of this one, or a table not yet committed, is not a row already finished
-            if because in (NAMED, HOLDS_ITS_REQUIREMENT) and not cites_it and not any(self._in_reach(n, commit["date"]) for n in rows):
+            if because in (NAMED, HOLDS_ITS_REQUIREMENT, NAMES_ITS_ISSUE) and not cites_it and not any(self._in_reach(n, commit["date"]) for n in rows):
                 return UNCLEAR, rows, f"row {min(rows)} had finished by then"
             return ON, rows, because
         if inherited and inherited[1] in (MERGED_FOR_THE_ROW, CITED_BRANCH):
@@ -400,6 +405,7 @@ class _Reading:
 
 NAMED = "named in the message"
 HOLDS_ITS_REQUIREMENT = "it names a requirement the row holds"
+NAMES_ITS_ISSUE = "it names the issue in the row's note"
 MERGED_FOR_THE_ROW = "its merge is tied to the row"
 CITED_BRANCH = "a row cites its branch"
 BRANCH_FOR_THE_ROW = "its branch is named for the row"

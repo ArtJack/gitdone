@@ -16,7 +16,7 @@ import unittest.mock
 
 from helpers import ENGINE, clean_env, delete_tree, git, needs_sh, not_on_windows
 
-from gitdone import chart, ci, cli, focus, forecast, gate, gitio, history, portfolio, requirements, table as tables, trace
+from gitdone import chart, ci, cli, evidence, focus, forecast, gate, gitio, history, portfolio, requirements, table as tables, trace
 from gitdone.plan import Plan, PlanError
 
 TODAY = datetime.date(2026, 3, 1)
@@ -123,7 +123,7 @@ class TheDatesInTheHistory(Case):
     def test_t40_a_huge_window_is_the_tables_life(self):
         self.steady()
         found = self.data(days=30000)
-        self.assertEqual(found["window_days"], (TODAY - datetime.date(2026, 1, 1)).days + 1)
+        self.assertEqual(found["window_days"], (TODAY - datetime.date(2026, 1, 1)).days)  # from the day after its first, which says where the project stood
 
     def test_t33_the_words_say_within_what(self):
         self.commit("2025-01-01", "first")
@@ -162,7 +162,7 @@ class TheTablesHistory(Case):
         (two / ".gitdone.json").write_text(text)
         self.commit("2026-02-28", "b begins, from a's table", table=False)
         found = forecast.data(Plan(two / ".gitdone.json"), today=TODAY)
-        self.assertEqual(found["window_days"], 2)
+        self.assertEqual(found["window_days"], 1)
         self.assertEqual(found["scope"]["added"], 0)
         self.assertEqual(chart.points(Plan(two / ".gitdone.json"), today=TODAY.isoformat())[0]["date"], "2026-02-28")
 
@@ -1344,7 +1344,7 @@ class TheThirdAttack(Case):
             self.move(i, "Partial", day)
         size = len(table_text(self.rows))
         with unittest.mock.patch.object(gitio, "MOST_BYTES_OF_HISTORY", size * 3 + 10):
-            steps, born, read_from = forecast.table_steps(self.plan(), datetime.date(2026, 2, 1), TODAY)
+            steps, born, read_from, _ = forecast.table_steps(self.plan(), datetime.date(2026, 2, 1), TODAY)
             found = self.data()
             points = chart.points(self.plan(), today=TODAY.isoformat())
         self.assertEqual((born, read_from), ("2026-02-01", "2026-02-10"))
@@ -2520,8 +2520,9 @@ class WhatATableInASpecSays(Case):
         found = self.coverage(self.SPEC, "Sign in with a magic link", "Export to PDF")
         self.assertEqual([item.ident for item in found["passed_over"]], ["ENG-101", "SEV-2"])
         words = trace.markdown(self.plan(), offline=True)
-        self.assertIn("2 ids in tables were not read as requirements, the first ENG-101 at spec.md:7", words)
-        self.assertEqual(trace.data(self.plan(), offline=True)["not_read"][0], {"id": "ENG-101", "where": "spec.md:7"})
+        self.assertIn("2 lines of the spec were not read as requirements", words)
+        self.assertIn("| ENG-101 | spec.md:7 | its column does not say it holds ids", words)
+        self.assertEqual((lambda entry: (entry["id"], entry["where"]))(trace.data(self.plan(), offline=True)["not_read"][0]), ("ENG-101", "spec.md:7"))
 
     def test_but_not_on_every_commit(self):
         self.coverage(self.SPEC, "Sign in with a magic link", "Export to PDF")
@@ -2945,9 +2946,9 @@ class TheSeventhReader(Case):
         self.write_table()
         self.commit("2026-03-01", "start")
         self.commit("2026-03-02", "Fix crash on empty file", files={"f.py": "1\n"}, table=False)
-        self.commit("2026-03-03", "Upgrade the HTTP client", files={"h.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Upgrade the HTTP client to 2.1", files={"h.py": "1\n"}, table=False)
         found = self.judged()
-        self.assertEqual((found["Fix crash on empty file"]["class"], found["Upgrade the HTTP client"]["class"]), (focus.UPKEEP, focus.UPKEEP))
+        self.assertEqual((found["Fix crash on empty file"]["class"], found["Upgrade the HTTP client to 2.1"]["class"]), (focus.UPKEEP, focus.UPKEEP))
 
     def test_more_project_files(self):
         self.write_table()
@@ -2994,6 +2995,209 @@ class TheSeventhReader(Case):
         done = self.engine("matrix", "--json", "--offline", "--out", "m.json")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("rows", json.loads((self.repo / "m.json").read_text()))
+
+
+class TheEighthReader(Case):
+    """A reader who checked the seventh's fixes in ordinary use: A1 to A4, and what was cheap beside them. Most of it is a new rule reaching too far."""
+
+    named, set_row, found, judged, merge_commit = TheFourthAttack.named, TheFourthAttack.set_row, TheFourthAttack.found, TheFourthAttack.judged, TheFourthAttack.merge_commit
+    note, coverage = TheSeventhReader.note, TheSeventhReader.coverage
+
+    def parsed(self, text):
+        return [(item.ident, item.words) for item in requirements.parse(text, "spec.md")]
+
+    # A1: a word in a heading is not a section
+    def test_a1_a_title_with_such_a_word_loses_nothing(self):
+        for title in ("# Risk Dashboard: Product Requirements", "# Product Requirements, Revision 3", "# Requirements and Assumptions", "# Reference Manager: Requirements", "# Customer Decision Hub PRD", "## Requirements and assumptions", "## Appendix A: Requirements"):
+            with self.subTest(title):
+                self.assertEqual(self.parsed(f"{title}\n\n- REQ-1: Users sign in\n- REQ-2: Admins invite\n"), [("REQ-1", "Users sign in"), ("REQ-2", "Admins invite")])
+
+    def test_a1_a_feature_with_such_a_name_loses_nothing(self):
+        text = "".join(f"### {heading}\n- FR-{at}: Words {at}\n" for at, heading in enumerate(("Applications", "Risk scoring", "Decision support", "Reference data", "Question editor", "Revision history", "Change log viewer"), 1))
+        self.assertEqual([item.ident for item in requirements.parse(text, "spec.md")], [f"FR-{at}" for at in range(1, 8)])
+
+    def test_a1_nor_does_a_to_do_list(self):
+        self.assertEqual(self.parsed("# TODO\n\n## Sign-up\n- [ ] Password reset\n\n## Question bank\n- [ ] Add a question\n"), [(None, "Password reset"), (None, "Add a question")])
+
+    def test_a1_a_section_that_is_one_keeps_only_what_the_file_defines(self):
+        text = "## Requirements\n\n- FR-1: Sign in\n\n## Risks\n\n- R-1: Data loss\n- FR-2: Written here\n- [ ] A plain item\n"
+        self.assertEqual(self.parsed(text), [("FR-1", "Sign in"), ("FR-2", "Written here")])
+
+    def test_a1_numbered_and_qualified_headings_are_the_same_section(self):
+        for heading in ("## 7. Risks", "## 7.1 Open questions", "## Known risks", "## Risks and mitigations", "## Assumptions and dependencies", "## **Glossary**", "## Goals:"):
+            with self.subTest(heading):
+                self.assertEqual(self.parsed(f"- FR-1: Sign in\n\n{heading}\n\n- Q-1: A thing\n"), [("FR-1", "Sign in")])
+
+    # A2: what was passed over, and why, where it is seen
+    def test_a2_the_matrix_lists_each_with_its_reason(self):
+        self.named("Sign in", "Thing")
+        self.write_table()
+        found = self.coverage("# Spec\n\n## Open questions\n- [ ] Who signs off on pricing?\n- Q-1: Do we support IMAP?\n\n## Requirements\n- REQ-1: Sign in\n\n| Interface | Protocol |\n|---|---|\n| IF-1 | REST |\n\n| Area | Ticket |\n|---|---|\n| Billing | ENG-1 |\n")
+        self.assertEqual([(item.ident, item.line) for item in found["passed_over"]], [(None, 4), ("Q-1", 5), ("IF-1", 12), ("ENG-1", 16)])
+        words = trace.markdown(self.plan(), offline=True)
+        self.assertIn("4 lines of the spec were not read as requirements", words)
+        self.assertIn("## Not read as requirements", words)
+        self.assertIn("| Who signs off on pricing? | spec.md:4 | it stands under a heading that does not hold requirements", words)
+        self.assertIn("| IF-1 | spec.md:12 | its table does not say it holds requirements", words)
+        self.assertIn("| ENG-1 | spec.md:16 | its column does not say it holds ids", words)
+
+    def test_a2_init_says_so(self):
+        self.plan_path.unlink()
+        (self.repo / "spec.md").write_text("- FR-1: Sign in\n\n| Code | Meaning |\n|---|---|\n| ERR-1 | Unknown |\n")
+        done = self.engine("init", "--from-checklist", "spec.md")
+        self.assertEqual(done.returncode, 0)
+        self.assertIn("Passed over 1 line that may not be requirements, the first ERR-1 at spec.md:5", done.stderr)
+
+    def test_a2_doctor_says_so_and_stays_ok(self):
+        self.named("Sign in")
+        self.write_table()
+        self.coverage("- FR-1: Sign in\n\n| Code | Meaning |\n|---|---|\n| ERR-1 | Unknown |\n")
+        self.note(1, "FR-1")
+        self.engine("render", "--write")
+        self.commit("2026-03-01", "start", table=False)
+        done = self.engine("doctor", "--offline")
+        self.assertIn("1 line passed over, which `matrix` lists", done.stdout)
+        self.assertNotIn("! scope", done.stdout)
+
+    # A3: a table that says it holds requirements
+    def test_a3_it_holds_them_whatever_its_first_column_is_called(self):
+        for name, text, wanted in (
+            ("a plain list beside it", "- FR-1: Browse\n\n| NFR | Requirement | Target |\n|---|---|---|\n| NFR-1 | Page load | under 2 s |\n", [("FR-1", "Browse"), ("NFR-1", "Page load")]),
+            ("another table beside it", "| ID | Requirement |\n|---|---|\n| R-1 | One |\n\n| Code | Requirement |\n|---|---|\n| C-1 | Two |\n", [("R-1", "One"), ("C-1", "Two")]),
+            ("stories under epics", "## EPIC-1 Checkout\n\n| Key | Summary |\n|---|---|\n| CK-1 | Pay by card |\n", [("EPIC-1", "Checkout"), ("CK-1", "Pay by card")]),
+            ("a goal beside it", "## Goals\nG-1: Cut no-shows.\n\n## Requirements\n\n| Code | Requirement | Owner |\n|---|---|---|\n| CS-1 | Patients book online | Ana |\n", [("CS-1", "Patients book online")]),
+        ):
+            with self.subTest(name):
+                self.assertEqual(self.parsed(text), wanted)
+
+    def test_a3_an_error_table_with_a_description_does_not_say_so(self):
+        self.assertEqual(self.parsed("- FR-1: Browse\n\n| Code | Description |\n|---|---|\n| ERR-1 | Unknown parcel |\n"), [("FR-1", "Browse")])
+
+    # A4: a branch that lives on
+    def test_a4_a_row_citing_develop_says_nothing_of_what_else_is_on_it(self):
+        self.named("Reports page", "Billing")
+        self.write_table()
+        self.commit("2026-03-01", "tracker")
+        git(self.repo, "checkout", "-q", "-b", "develop")
+        self.commit("2026-03-02", "Add CSV contact import", files={"c.py": "1\n"}, table=False)
+        self.note(1, "*(Partial 2026-03-03: branch `develop`)*")
+        self.commit("2026-03-03", "tracker: reports on develop", table=False)
+        self.commit("2026-03-04", "Add the embeddable chat widget", files={"w.py": "1\n"}, table=False)
+        self.assertEqual(self.judged()["Add the embeddable chat widget"]["class"], focus.OFF)
+        git(self.repo, "checkout", "-q", "main")
+        self.merge_commit("develop", day="2026-03-05", message="Merge branch 'develop'")
+        self.assertEqual(self.judged()["Add CSV contact import"]["class"], focus.OFF)
+
+    # W1 to W9: what was cheap beside them
+    def test_a_note_written_by_hand_says_which_it_implements(self):
+        for note, ids in (("Implements REQ-1", ["REQ-1"]), ("`REQ-2`", ["REQ-2"]), ("**REQ-3**", ["REQ-3"]), ("(REQ-4)", ["REQ-4"]), ("[REQ-6] started", ["REQ-6"]), ("Spec: REQ-9", ["REQ-9"]), ("REQ-7 and REQ-8", ["REQ-7", "REQ-8"]), ("covers FR-1, FR-2", ["FR-1", "FR-2"]),
+                          ("depends on REQ-3", []), ("see REQ-1", []), ("blocked by REQ-2", [])):
+            with self.subTest(note):
+                self.assertEqual(evidence.requirements_held("A row", note), ids)
+
+    def test_a_standard_in_a_row_s_name_is_not_a_requirement(self):
+        self.assertEqual(evidence.requirements_held("UTF-8 attachment names and SHA-256 checksums", ""), [])
+        self.assertEqual(evidence.requirements_held("Login (REQ-1)", ""), ["REQ-1"])
+
+    def test_a_tag_from_before_the_table_is_not_pace_either(self):
+        self.named("One", "Two", "Three", "Four", "Five")
+        self.commit("2026-01-05", "old work", files={"old.py": "1\n"}, table=False)
+        git(self.repo, "tag", "v0.1")
+        self.write_table()
+        self.commit("2026-02-01", "the tracker")
+        for num, day in enumerate(("2026-02-10", "2026-02-15", "2026-02-20"), start=1):
+            self.set_row(num, "Live")
+            self.write_table()
+            for n in range(1, num + 1):
+                self.note(n, "tag v0.1")
+            self.commit(day, f"row {num} was done", table=False)
+        found = self.data()
+        self.assertEqual((found["moving_days"], found["set_aside"]), (0, 3))
+        self.assertIn("3 rows moved on the table's first day, or on commits from before it", forecast.text(found))
+
+    def test_an_issue_needs_a_word_or_parentheses_and_a_note_that_starts_with_it(self):
+        self.named("Invoice PDF export", "Mail digest", "Site theme")
+        self.write_table()
+        self.note(1, "issue #12")
+        self.note(2, "blocked by issue #40")
+        self.note(3, "issue #333")
+        self.commit("2026-03-01", "tracker", table=False)
+        self.commit("2026-03-02", "Work around rails/rails#12 in the mailer", files={"m.py": "1\n"}, table=False)
+        self.commit("2026-03-03", "Stop the crash on empty carts (closes #40)", files={"c.py": "1\n"}, table=False)
+        self.commit("2026-03-04", "Darken the header to #333", files={"s.css": "1\n"}, table=False)
+        self.commit("2026-03-05", "Renderer, see #12", files={"r.py": "1\n"}, table=False)
+        self.commit("2026-03-06", "Renderer tweak (#12)", files={"q.py": "1\n"}, table=False)
+        found = self.judged()
+        for subject in ("Work around rails/rails#12 in the mailer", "Stop the crash on empty carts (closes #40)", "Darken the header to #333"):
+            self.assertEqual(found[subject]["class"], focus.OFF, subject)
+        self.assertEqual((found["Renderer, see #12"]["rows"], found["Renderer tweak (#12)"]["rows"]), ([1], [1]))
+
+    def test_a_row_finished_is_finished_by_its_issue_too(self):
+        self.named("Invoice PDF export", "Billing")
+        self.set_row(1, "Live")
+        self.write_table()
+        self.note(1, "issue #12")
+        self.commit("2026-03-01", "tracker", table=False)
+        self.commit("2026-03-05", "Tidy the invoice totals, see #12", files={"t.py": "1\n"}, table=False)
+        self.assertEqual(self.judged()["Tidy the invoice totals, see #12"]["class"], focus.UNCLEAR)
+
+    def test_the_first_day_is_not_in_the_days_either(self):
+        self.write_table()
+        self.commit("2026-02-20", "tracker")
+        for num, day in enumerate(("2026-02-21", "2026-02-23", "2026-02-25"), start=1):
+            self.move(num, "Partial", day)
+        pace = forecast.read_pace(self.plan(), today=datetime.date(2026, 2, 25))
+        self.assertEqual(pace.days, 5)
+
+    def test_a_table_of_today_has_a_day_to_divide_by(self):
+        self.write_table()
+        self.commit("2026-02-20", "tracker")
+        self.assertEqual(forecast.read_pace(self.plan(), today=datetime.date(2026, 2, 20)).days, 1)
+        self.assertEqual(forecast.data(self.plan(), today=datetime.date(2026, 2, 20))["state"], "too_little")
+
+    def test_a_row_that_finished_on_the_first_day_had_not_finished_before_it(self):
+        self.named("Login", "Export")
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        sha = self.commit("2026-03-01", "row 1: session cookie", files={"a.py": "1\n"}, table=False)
+        self.set_row(1, "Live")
+        self.write_table()
+        self.note(1, f"`{sha}`")
+        self.commit("2026-03-01", "row 1 live", table=False)
+        self.assertEqual(self.judged()["row 1: session cookie"]["class"], focus.ON)
+
+    def test_a_feature_named_upgrade_or_fixed_is_not_upkeep(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        for at, subject in enumerate(("Upgrade prompt for free users", "Upgrade flow: pick a plan and pay", "Fixed-price quotes", "Fixed header on the pricing table"), 2):
+            self.commit(f"2026-03-{at:02d}", subject, files={f"{at}.py": "1\n"}, table=False)
+        self.commit("2026-03-09", "Upgrade Spring Boot to 3.3", files={"u.py": "1\n"}, table=False)
+        self.commit("2026-03-10", "Fix login redirect loop", files={"f.py": "1\n"}, table=False)
+        found = self.judged()
+        for subject in ("Upgrade prompt for free users", "Upgrade flow: pick a plan and pay", "Fixed-price quotes", "Fixed header on the pricing table"):
+            self.assertEqual(found[subject]["class"], focus.OFF, subject)
+        self.assertEqual((found["Upgrade Spring Boot to 3.3"]["class"], found["Fix login redirect loop"]["class"]), (focus.UPKEEP, focus.UPKEEP))
+
+    def test_a_line_that_could_be_prose_is_said_too(self):
+        passed = requirements.passed_over_in("- FR-1: Write a note\n- NFR-1 Sync finishes within five seconds\n", "spec.md")
+        self.assertEqual([(item.ident, item.why) for item in passed], [("NFR-1", requirements.WHY_NOT_READ["prose"])])
+
+    def test_a_package_called_gradle_is_not_a_project_file(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        self.commit("2026-03-02", "A plugin", files={"org/acme/gradle/Plugin.java": "1\n"}, table=False)
+        self.assertEqual(self.judged()["A plugin"]["class"], focus.OFF)
+
+    def test_json_goes_where_it_is_told(self):
+        self.write_table()
+        self.commit("2026-03-01", "start")
+        for command, keys in ((("report",), ()), (("chart",), ()), (("chart", "--burndown"), ("points",))):
+            with self.subTest(command):
+                done = self.engine(*command, "--json", "--out", "x.json")
+                self.assertEqual(done.returncode, 0, done.stderr)
+                found = json.loads((self.repo / "x.json").read_text())
+                for key in keys:
+                    self.assertIn(key, found)
 
 
 if __name__ == "__main__":

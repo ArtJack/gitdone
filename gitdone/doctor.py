@@ -76,7 +76,7 @@ def _time_and_scope(plan, table):
         except Exception as err:
             return out + [_item(WARN, "scope", render.one_line(err))]
         count = len(found["items"]) - len(found["without"])
-        words = f"{count} of {len(found['items'])} have a row" + "".join(f"; {p}" for p in found["problems"])
+        words = f"{count} of {len(found['items'])} have a row" + "".join(f"; {p}" for p in found["problems"]) + (f"; {len(found['passed_over'])} line{'' if len(found['passed_over']) == 1 else 's'} passed over, which `matrix` lists" if found["passed_over"] else "")
         out.append(_item(WARN if found["without"] or found["problems"] else OK, "scope", f"requirements: {words}"))
     return out
 

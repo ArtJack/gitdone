@@ -76,6 +76,7 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
   "plan_problems": [],
   "all_groups": false,
   "newest_only": false,
+  "set_aside": 0,
   "scope": {"added": 5, "removed": 0, "keeps_growing": false, "per_day": 0.179, "never_catches_up": false},
   "live": {"kind": "Live", "left": 12, "moving_days": 3, "pace_per_day": 0.107, "likely": "2026-06-23", "sure": "2026-07-31", "too_far": false},
   "deadline": {"date": "2026-04-15", "start": "2026-01-12", "days_left": 43, "time_used": 0.54, "needs_per_day": 0.202, "needs_per_day_live": 0.279, "late_by": -1, "late_by_if_sure": 14, "late_by_live": 69},
@@ -83,7 +84,7 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 }
 ```
 
-`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone. `all_groups` says the plan has groups and these numbers cover all of them. `newest_only` says there was too much of the table's history to read, and the window is what could be.
+`state` is `dated`, `too_little`, `stalled`, `shallow`, `done` or `no_rows`. `likely` and `sure` are null unless it is `dated`, and with `too_far` too. `sure` is the 85% date, and null if that is past ten years. A negative `late_by` is early. `live` is the same line through rows reaching the strict kind alone. `all_groups` says the plan has groups and these numbers cover all of them. `newest_only` says there was too much of the table's history to read, and the window is what could be. `set_aside` is how many rows moved on the table's first day or on commits from before it, which is not pace.
 
 ## `focus --json`
 
@@ -93,7 +94,7 @@ numbers a finding is about, and is empty for a finding about the whole table. A 
 ## The rest
 
 - **`next --json`:** `workstream` (or null), `rows` (each `row`, `name`, `kind`, `note`), `open_rows`.
-- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`, `looks_like`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, `not_read` (ids in tables' other columns, each `id`, `where`), and `summary`.
+- **`matrix --json`:** `requirements` (each `id`, `words`, `where`, `rows`, `looks_like`), `rows` (what `report --json` gives, with `named_by` and `tests`), `problems`, `not_read` (lines of a spec not read as requirements, each `id`, `words`, `where`, `why`), and `summary`.
 - **`where --json`:** `plan`, `table`, `view`, `repo`, `default_branch`, `verdict`.
 - **`rows --json`:** a list of `row`, `name`, `kind`, `status`, `note`, `domain`, `domain_name`.
 - **`report --json`:** every row with `claims`, each with `kind`, `value`, `state`, `detail` and, when git or `gh` found it, `found`.

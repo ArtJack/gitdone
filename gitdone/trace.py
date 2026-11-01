@@ -114,7 +114,7 @@ def data(plan, offline=False):
     top = plan.strict_kind.name
     live = [r for r in rows if r["kind"] == top]
     finished = [e for e in entries if e["rows"] and all(by_number[n]["kind"] == top for n in e["rows"])]
-    return {"requirements": entries, "rows": rows, "problems": found["problems"], "not_read": [{"id": item.ident, "where": item.where()} for item in found["passed_over"][:MOST_NOT_READ_SHOWN]],
+    return {"requirements": entries, "rows": rows, "problems": found["problems"], "not_read": [{"id": item.ident, "words": item.words, "where": item.where(), "why": item.why} for item in found["passed_over"][:MOST_NOT_READ_SHOWN]],
             "summary": {"requirements": len(entries), "with_a_row": sum(1 for e in entries if e["rows"]), "without_a_row": [e["where"] for e in entries if not e["rows"]], "ids_not_read": len(found["passed_over"]),
                         "requirements_finished": len(finished),
                         "rows": len(rows), "rows_nobody_asked_for": [r.num for r in found["unasked"]],
@@ -165,6 +165,8 @@ def markdown(plan, offline=False, today=None):
         if s["rows_nobody_asked_for"]:
             headline.append(f"{len(s['rows_nobody_asked_for'])} of {s['rows']} rows answer to no requirement.")
     headline.append(f"{s['live'] - len(s['live_without_a_test'])} of {s['live']} {_cell(plan.strict_kind.name)} rows have a test on record.")
+    if s["ids_not_read"]:
+        headline.append(f"{s['ids_not_read']} line{'' if s['ids_not_read'] == 1 else 's'} of the spec {'was' if s['ids_not_read'] == 1 else 'were'} not read as requirements: see below.")
     L += [" ".join(headline), ""]
     if found["requirements"]:
         L += ["| Requirement | Where | Row | Status | Evidence | Tests |", "|---|---|---|---|---|---|"]
@@ -189,7 +191,8 @@ def markdown(plan, offline=False, today=None):
     if found["problems"]:
         L += ["## Could not be read", ""] + [f"- {_cell(p)}" for p in found["problems"]] + [""]
     if found["not_read"]:
-        first = found["not_read"][0]
-        L += [f"{s['ids_not_read']} ids in tables were not read as requirements, the first {_cell(first['id'])} at {_cell(first['where'])}: their columns do not say they hold them. "
-              f"If they are requirements, head the column `ID`, or write `{_cell(first['id'])}: words`.", ""]
+        L += ["## Not read as requirements", "", "| What | Where | Why |", "|---|---|---|"]
+        L += [f"| {_cell(entry['id'] or entry['words'])} | {_cell(entry['where'])} | {_cell(entry['why'])} |" for entry in found["not_read"]]
+        L += [f"| and {s['ids_not_read'] - len(found['not_read'])} more | | |"] if s["ids_not_read"] > len(found["not_read"]) else []
+        L.append("")
     return "\n".join(L)

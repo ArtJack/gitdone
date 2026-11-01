@@ -64,6 +64,10 @@ def _print_json(data):
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
+def _json_to(path, data):
+    _write_or_print(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
 def cmd_check(args):
     if args.json:
         if args.if_staged:
@@ -363,7 +367,7 @@ def cmd_doctor(args):
 
 
 def _init_sections(args):
-    from . import gitio, scaffold
+    from . import gitio, requirements, scaffold
     if args.from_checklist:
         try:
             text = open(args.from_checklist, encoding="utf-8").read()
@@ -372,6 +376,9 @@ def _init_sections(args):
         except UnicodeDecodeError:
             raise PlanError(f"{args.from_checklist} is not UTF-8")
         sections = scaffold.sections_from_checklist(text)
+        passed = requirements.passed_over_in(text, args.from_checklist)
+        if passed:
+            print(f"Passed over {len(passed)} line{'' if len(passed) == 1 else 's'} that may not be requirements, the first {render.one_line(passed[0].ident or passed[0].words)} at {render.one_line(passed[0].where())}: {passed[0].why}.", file=sys.stderr)
         if not sections:
             raise PlanError(f"{args.from_checklist} holds no `- [ ]` items and no `REQ-1: words` lines")
         return sections
@@ -526,7 +533,7 @@ def cmd_matrix(args):
     from . import trace
     plan = _plan(args)
     if args.json:
-        _write_or_print(args.out, json.dumps(trace.data(plan, offline=args.offline), indent=2, ensure_ascii=False) + "\n")
+        _json_to(args.out, trace.data(plan, offline=args.offline))
     else:
         _write_or_print(args.out, trace.markdown(plan, offline=args.offline))
     return 0
@@ -541,7 +548,7 @@ def _burndown(args, plan, items):
     from . import chart, forecast
     found = forecast.data(plan, group=_group(plan, args.group))
     if args.json:
-        _print_json({"points": items, "forecast": found})
+        _json_to(args.out, {"points": items, "forecast": found})
     elif not args.out and sys.stdout.isatty():
         print(forecast.text(found))
         print("To draw it: gitdone chart --burndown --out burndown.svg")
@@ -559,7 +566,7 @@ def cmd_chart(args):
     if args.burndown and not args.csv:
         return _burndown(args, plan, items)
     if args.json:
-        _print_json(items)
+        _json_to(args.out, items)
     elif args.csv:
         _write_or_print(args.out, chart.burndown_csv(items) if args.burndown else chart.csv_text(items))
     elif not args.out and sys.stdout.isatty():
@@ -595,7 +602,7 @@ def cmd_report(args):
     from . import report
     plan = _plan(args)
     if args.json:
-        _print_json(report.rows_data(plan, offline=args.offline))
+        _json_to(args.out, report.rows_data(plan, offline=args.offline))
     else:
         _write_or_print(args.out, report.markdown(plan, offline=args.offline))
     return 0
