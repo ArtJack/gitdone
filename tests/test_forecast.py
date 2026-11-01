@@ -4,10 +4,9 @@ import json
 import math
 import pathlib
 import random
-import shutil
 import unittest
 
-from helpers import ProjectCase, git
+from helpers import ProjectCase, delete_tree, git
 
 from gitdone import chart, forecast
 from gitdone.plan import Plan, PlanError
@@ -184,7 +183,7 @@ class TheLine(HistoryCase):
         self.assertEqual(self.data()["moving_days"], 0)
 
     def test_a_table_outside_any_repository_cannot_run_rather_than_answering(self):
-        shutil.rmtree(self.repo / ".git")
+        delete_tree(self.repo / ".git")
         (self.repo / "status-table.md").write_text(table_text(self.rows))
         with self.assertRaises(PlanError):
             self.data()
@@ -408,7 +407,7 @@ class Commands(ProjectCase):
         self.assertEqual(json.loads(out)["state"], "dated")
 
     def test_eta_with_a_table_outside_git_cannot_run_and_exits_two(self):
-        shutil.rmtree(self.project / ".git")
+        delete_tree(self.project / ".git")
         code, _, err = self.cli("eta")
         self.assertEqual(code, 2)
         self.assertIn("not in a git repository", err)

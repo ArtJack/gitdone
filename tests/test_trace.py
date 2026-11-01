@@ -5,7 +5,7 @@ import pathlib
 import tempfile
 import unittest
 
-from helpers import git, needs_sh
+from helpers import delete_tree, git, needs_sh
 
 from gitdone import gate, requirements, table as tables, trace
 from gitdone.plan import Plan
@@ -286,8 +286,7 @@ class Matrix(RequirementCase):
         self.assertIn("## Could not be read", trace.markdown(self.plan(), offline=True))
 
     def test_with_no_repository_the_rows_still_stand(self):
-        import shutil
-        shutil.rmtree(self.repo / ".git")
+        delete_tree(self.repo / ".git")
         self.write_plan(requirements=["docs/spec.md"])
         words = trace.markdown(self.plan(), offline=True)
         self.assertIn("**no row**", words)

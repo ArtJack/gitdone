@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from helpers import ENGINE, ROOT, clean_env, git
+from helpers import ENGINE, ROOT, clean_env, git, not_on_windows
 
 from gitdone import focus
 from gitdone.plan import Plan, PlanError
@@ -443,6 +443,7 @@ class Hostile(FocusCase):
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_a_file_name_with_odd_characters_is_read(self):
+        not_on_windows(self, "Windows allows no tab in a file's name")
         name = "src/with space\tand tab.py"
         judged = self.judged("Odd", files={name: "1\n"})
         self.assertEqual(judged["area"], name)
