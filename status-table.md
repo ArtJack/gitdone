@@ -24,8 +24,8 @@ from it.
 | 10 | Plan discovery names no private folder | Live | The plan may be the pointer file itself. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 11 | MIT license and the policy files | Live | LICENSE, CONTRIBUTING, SECURITY, AGENTS, llms.txt, issue templates. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 12 | CI on three operating systems, on the floor and the newest Python | Live | Green on all three. On Windows the tests that need a POSIX shell are left out. *(Live 2026-10-31: `1a8403d`; was Partial)* |
-| 13 | A release workflow by Trusted Publishing that refuses a mismatched tag | Partial | Written and lint-clean, and the trusted publisher is set up on PyPI. It has not run yet. |
-| 14 | The name reserved on PyPI | Not built | `gitdone` was free on 2026-10-31; reserving it leaves the machine, so it waits for the first push. |
+| 13 | A release workflow by Trusted Publishing that refuses a mismatched tag | Live | It published 0.2.0 to PyPI, the GitHub Release, the `v0` tag and the MCP registry, after stopping two runs at its own test step, before anything was published. *(Live 2026-10-31: tag v0.2.0; was Partial)* |
+| 14 | The name reserved on PyPI | Live | `gitdone` is ours on PyPI. 0.2.0 installs from there with uvx, pip and pipx, on the floor Python too. *(Live 2026-10-31: tag v0.2.0; was Not built)* |
 
 ### 3. Onboarding (7)
 
@@ -48,7 +48,7 @@ from it.
 | 23 | `report`: the evidence row by row | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 24 | `portfolio`: every tracked project on one page | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 25 | A GitHub Action: annotations, one comment, a badge branch | Partial | Runs on GitHub: the gate and the badge branch. The comment on a pull request has not run there yet. |
-| 26 | This README shows its own badge and chart | Partial | Both are there. The chart's link needs the repository to be public. |
+| 26 | This README shows its own badge and chart | Live | Both are there, and the chart's link resolves now that the repository is public. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 
 ### 5. Evidence and agents (10)
 
@@ -61,7 +61,7 @@ from it.
 | 31 | A skill for every coding agent | Live | `skills/gitdone/SKILL.md`. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 32 | `install-agents`: the rules in `AGENTS.md` | Live | In the first public commit. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 33 | A read-only MCP server with no dependency | Live | A test walks its imports; nothing that writes is reachable. *(Live 2026-10-31: `cc13a2b`; was Partial)* |
-| 34 | Listed on skills.sh | Not built | Needs the public repository. |
+| 34 | Listed on skills.sh | Not built | The repository is public. A listing needs the owner's word. |
 | 41 | A claim in name only is refused: an empty commit, a table-only commit or pull request, a merge that took nothing, a commit not pushed | Live | *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 | 42 | A repository being judged cannot run anything here, write outside its project, or reach into git's own folder | Live | *(Live 2026-10-31: `cc13a2b`; was Partial)* |
 
@@ -76,7 +76,7 @@ from it.
 
 | # | Capability | Status | Note |
 |---|---|---|---|
-| 37 | The repository is public, with a clean history | Not built | |
+| 37 | The repository is public, with a clean history | Live | Public since 2026-10-31, from one clean commit. *(Live 2026-10-31: `cc13a2b`; was Not built)* |
 | 38 | Version 1.0 on PyPI, after two weeks of its own gate | Not built | |
 | 39 | Listed where people look: awesome lists, a Show HN | Not built | |
 | 40 | A write-up with real numbers | Not built | |
