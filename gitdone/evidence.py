@@ -23,8 +23,8 @@ VERIFIED, UNVERIFIED, UNPROVEN, ABSENT, CONTRADICTED = "verified", "unverified",
 # 64 digits is a SHA-256 repository's id. 18 digits is the most a number here can have: past 4,300 Python's own answer depends on its version.
 REQUIREMENT_ID = r"[A-Z][A-Z0-9]{0,19}-\d{1,9}(?:\.\d{1,9})*"
 REQUIREMENT_IN_TEXT = re.compile(rf"(?<![A-Za-z0-9-]){REQUIREMENT_ID}(?![0-9A-Za-z-])")
-LEADING_REQUIREMENTS = re.compile(r"^[\s`*_(\[]*(?:(?i:implements?|covers?|closes?|fulfil+s?|spec|req|requirements?)\b[\s:]*)?"
-                                  rf"((?:{REQUIREMENT_ID}(?![0-9A-Za-z-])[\s,;/&.:`*_)\]]*(?:and\s+)?)+)")
+LEADING_REQUIREMENTS = re.compile(r"^[\s`*_(\[]*((?:(?:(?i:implements?|covers?|closes?|fulfil+s?|spec|req|requirements?)\b[\s:]*)?"
+                                  rf"{REQUIREMENT_ID}(?![0-9A-Za-z-])[\s,;/&.:`*_)\]]*(?:and\s+)?)+)")
 NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
 NAMED_EVIDENCE = re.compile(r"\s*\(\s*(?:`?[0-9a-f]{7,64}`?|PR\s*#?\s*\d+|pull request\s*#?\s*\d+)\s*\)", re.I)
 QUOTED_SHA = re.compile(r"`([0-9a-f]{7,64})`")

@@ -3085,6 +3085,37 @@ class TheEighthReader(Case):
         self.assertEqual(self.engine("init", "--from-checklist", "requirements.md").returncode, 0)
         self.assertEqual([r.name for d in tables.load_clean(self.plan()).domains for r in d.rows], ["Intake", "Normalize", "Privacy"])
 
+    def test_a_numbered_heading_with_an_id(self):
+        self.assertEqual(self.parsed("#### 3.1 FR-13 Title\n\n## 2. FR-14: Another\n"), [("FR-13", "Title"), ("FR-14", "Another")])
+
+    def test_a_section_with_a_remark_in_its_heading_is_the_same_section(self):
+        self.assertEqual(self.parsed("- FR-1: Sign in\n\n## 5. Out of scope (for now)\n\n- [ ] Gift cards\n"), [("FR-1", "Sign in")])
+
+    def test_more_ways_to_name_an_issue(self):
+        self.named("Export", "Billing")
+        self.write_table()
+        self.note(1, "issue #12")
+        self.commit("2026-03-01", "tracker", table=False)
+        for at, subject in enumerate(("#12 header", "Closes: #12", "Part of #12", "Implements #12", "Fixes #12", "See #12"), 2):
+            self.commit(f"2026-03-{at:02d}", subject, files={f"{at}.py": "1\n"}, table=False)
+        for subject, found in self.judged().items():
+            with self.subTest(subject):
+                self.assertEqual(found["rows"], [1])
+
+    def test_link_does_not_undo_what_the_note_already_said(self):
+        self.named("Export", "Billing")
+        self.write_table()
+        self.note(1, "issue #12")
+        self.note(2, "Implements NFR-5")
+        self.commit("2026-03-01", "tracker", table=False)
+        self.assertEqual(self.engine("link", "1", "REQ-1").returncode, 0)
+        self.assertEqual(self.engine("link", "2", "NFR-6").returncode, 0)
+        self.commit("2026-03-02", "link them", table=False)
+        self.commit("2026-03-03", "PDF renderer, closes #12", files={"p.py": "1\n"}, table=False)
+        self.assertEqual(self.judged()["PDF renderer, closes #12"]["rows"], [1])
+        billing = tables.load_clean(self.plan()).rows[2]
+        self.assertEqual(evidence.requirements_held(billing.name, billing.note), ["NFR-6", "NFR-5"])
+
     # A4: a branch that lives on
     def test_a4_a_row_citing_develop_says_nothing_of_what_else_is_on_it(self):
         self.named("Reports page", "Billing")
