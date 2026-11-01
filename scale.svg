@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 333" width="760" height="333" role="img" aria-labelledby="t d">
+<title id="t">GitDone: how far along</title>
+<desc id="d">All: strict 80%, 40 of 50 rows, weighted 84%</desc>
+<style>
+:root{--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#6f6d68;--grid:#e1e0d9;--axis:#c3c2b7;--edge:rgba(11,11,11,.10);--strict:#2a78d6;--weighted:#eb6834;--scope:#52514e}
+@media (prefers-color-scheme:dark){:root{--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#a3a198;--grid:#2c2c2a;--axis:#383835;--edge:rgba(255,255,255,.10);--strict:#3987e5;--weighted:#d95926;--scope:#c3c2b7}}
+text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);font-size:12px}
+.title{fill:var(--ink);font-size:16px;font-weight:600}
+.tick{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.value{fill:var(--ink);font-weight:600}
+.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.dot{stroke:var(--surface);stroke-width:2}
+</style>
+<rect x=".5" y=".5" width="759" height="332" rx="8" fill="var(--surface)" stroke="var(--edge)"/>
+<text class="title" x="16" y="28">GitDone: how far along</text>
+<text x="16" y="47">Strict counts what is on the default branch. Weighted also credits what stopped short of it, at the plan's weights.</text>
+<rect x="16" y="61" width="14" height="3" rx="1.5" fill="var(--strict)"/>
+<text x="35" y="67">Strict</text>
+<rect x="95" y="61" width="14" height="3" rx="1.5" fill="var(--weighted)"/>
+<text x="114" y="67">Weighted</text>
+<text class="tick" x="680" y="67" text-anchor="end">Strict</text>
+<text class="tick" x="744" y="67" text-anchor="end">Weighted</text>
+<text x="16" y="96" class="value">All</text>
+<rect x="290" y="86" width="340" height="12" rx="6" fill="var(--grid)"/>
+<rect x="290" y="86" width="285.6" height="12" rx="6" fill="var(--weighted)"/>
+<rect x="290" y="86" width="272.0" height="12" rx="6" fill="var(--strict)"/>
+<text class="value" x="680" y="96" text-anchor="end">80%</text>
+<text class="value" x="744" y="96" text-anchor="end">84%</text>
+<rect x="0" y="78.5" width="760" height="27" fill="transparent"><title>All: 40 of 50 rows strict, 84% weighted</title></rect>
+<text x="28" y="123">1. The engine</text>
+<rect x="290" y="115" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="115" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="115" width="340.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="123" text-anchor="end">100%</text>
+<text class="value" x="744" y="123" text-anchor="end">100%</text>
+<rect x="0" y="105.5" width="760" height="27" fill="transparent"><title>1. The engine: 6 of 6 rows strict, 100% weighted</title></rect>
+<text x="28" y="150">2. Installs anywhere</text>
+<rect x="290" y="142" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="142" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="142" width="340.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="150" text-anchor="end">100%</text>
+<text class="value" x="744" y="150" text-anchor="end">100%</text>
+<rect x="0" y="132.5" width="760" height="27" fill="transparent"><title>2. Installs anywhere: 8 of 8 rows strict, 100% weighted</title></rect>
+<text x="28" y="177">3. Onboarding</text>
+<rect x="290" y="169" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="169" width="289.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="169" width="255.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="177" text-anchor="end">75%</text>
+<text class="value" x="744" y="177" text-anchor="end">85%</text>
+<rect x="0" y="159.5" width="760" height="27" fill="transparent"><title>3. Onboarding: 6 of 8 rows strict, 85% weighted</title></rect>
+<text x="28" y="204">4. Visibility</text>
+<rect x="290" y="196" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="196" width="340.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="196" width="340.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="204" text-anchor="end">100%</text>
+<text class="value" x="744" y="204" text-anchor="end">100%</text>
+<rect x="0" y="186.5" width="760" height="27" fill="transparent"><title>4. Visibility: 6 of 6 rows strict, 100% weighted</title></rect>
+<text x="28" y="231">5. Evidence and agents</text>
+<rect x="290" y="223" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="223" width="285.6" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="223" width="272.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="231" text-anchor="end">80%</text>
+<text class="value" x="744" y="231" text-anchor="end">84%</text>
+<rect x="0" y="213.5" width="760" height="27" fill="transparent"><title>5. Evidence and agents: 8 of 10 rows strict, 84% weighted</title></rect>
+<text x="28" y="258">6. Adoption</text>
+<rect x="290" y="250" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="250" width="68.0" height="8" rx="4" fill="var(--weighted)"/>
+<text class="value" x="680" y="258" text-anchor="end">0%</text>
+<text class="value" x="744" y="258" text-anchor="end">20%</text>
+<rect x="0" y="240.5" width="760" height="27" fill="transparent"><title>6. Adoption: 0 of 2 rows strict, 20% weighted</title></rect>
+<text x="28" y="285">7. Launch</text>
+<rect x="290" y="277" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="277" width="85.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="277" width="85.0" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="285" text-anchor="end">25%</text>
+<text class="value" x="744" y="285" text-anchor="end">25%</text>
+<rect x="0" y="267.5" width="760" height="27" fill="transparent"><title>7. Launch: 1 of 4 rows strict, 25% weighted</title></rect>
+<text x="28" y="312">8. Time and focus</text>
+<rect x="290" y="304" width="340" height="8" rx="4" fill="var(--grid)"/>
+<rect x="290" y="304" width="306.0" height="8" rx="4" fill="var(--weighted)"/>
+<rect x="290" y="304" width="283.3" height="8" rx="4" fill="var(--strict)"/>
+<text class="value" x="680" y="312" text-anchor="end">83%</text>
+<text class="value" x="744" y="312" text-anchor="end">90%</text>
+<rect x="0" y="294.5" width="760" height="27" fill="transparent"><title>8. Time and focus: 5 of 6 rows strict, 90% weighted</title></rect>
+</svg>

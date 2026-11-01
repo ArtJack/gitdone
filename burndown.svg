@@ -13,7 +13,7 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 </style>
 <rect x=".5" y=".5" width="759" height="339" rx="8" fill="var(--surface)" stroke="var(--edge)"/>
 <text class="title" x="16" y="28">GitDone: burn-down</text>
-<text x="16" y="47">Rows left, in blue on Live rows alone, in orange with all work, from the table's git history.</text>
+<text x="16" y="47">Rows left: blue on Live rows alone, orange with all work.</text>
 <text x="16" y="67">No date yet: rows moved on 1 of the last 1 day, and a line needs 3.</text>
 <line x1="44" x2="578" y1="310.0" y2="310.0" stroke="var(--axis)"/>
 <text class="tick" x="36" y="314.0" text-anchor="end">0</text>
@@ -29,13 +29,13 @@ text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--ink2);
 <text class="tick" x="36" y="88.0" text-anchor="end">10</text>
 <text class="tick" x="44.0" y="329" text-anchor="start">Oct 31, 2026</text>
 <text class="tick" x="578.0" y="329" text-anchor="end">Nov 1</text>
-<path class="line" d="M44.0 106.6H578.0V129.2" stroke="var(--strict)"/>
-<path class="line" d="M44.0 142.8H578.0V156.3" stroke="var(--weighted)"/>
-<text class="tick" x="578.0" y="148.3" text-anchor="middle">+5</text>
-<circle class="dot" cx="578.0" cy="129.2" r="5" fill="var(--strict)"/>
-<circle class="dot" cx="578.0" cy="156.3" r="5" fill="var(--weighted)"/>
-<text x="592" y="88.0"><tspan class="value">6.8</tspan> rows left, all work</text>
-<text x="592" y="108.0"><tspan class="value">8</tspan> rows left, Live alone</text>
+<path class="line" d="M44.0 106.6H578.0V84.0" stroke="var(--strict)"/>
+<path class="line" d="M44.0 142.8H578.0V129.2" stroke="var(--weighted)"/>
+<text class="tick" x="578.0" y="121.2" text-anchor="middle">+7</text>
+<circle class="dot" cx="578.0" cy="84.0" r="5" fill="var(--strict)"/>
+<circle class="dot" cx="578.0" cy="129.2" r="5" fill="var(--weighted)"/>
+<text x="592" y="88.0"><tspan class="value">8</tspan> rows left, all work</text>
+<text x="592" y="108.0"><tspan class="value">10</tspan> rows left, Live alone</text>
 <rect x="44.0" y="84" width="534.0" height="226" fill="transparent"><title>2026-10-31: 7.4 rows left of 43</title></rect>
-<rect x="578.0" y="84" width="1.0" height="226" fill="transparent"><title>2026-11-01: 6.8 rows left of 48</title></rect>
+<rect x="578.0" y="84" width="1.0" height="226" fill="transparent"><title>2026-11-01: 8 rows left of 50</title></rect>
 </svg>
