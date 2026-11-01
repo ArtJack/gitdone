@@ -15,7 +15,7 @@ MOST_FILES = 50
 LONGEST_LINE = 2000  # a requirement is a sentence. A longer line is not one, and nothing below should have to read it
 CHECK_ITEM = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s+\[( |x|X)\]\s+(.*\S)\s*$")
 ID = evidence.REQUIREMENT_ID
-ITEM_ID = re.compile(r"^\s*(#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?:\[[ xX]\]\s+)?)?(\*\*|__|`)?"
+ITEM_ID = re.compile(r"^\s*(#{1,6}\s+(?:\d{1,9}(?:\.\d{1,9})*\.?\s+)?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+(?:\[[ xX]\]\s+)?)?(\*\*|__|`)?"
                      rf"({ID})(?![A-Za-z0-9-])([:.]?)(\*\*|__|`)?\s*(:|\.|-|–|—)?\s*(.*)$")
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
@@ -27,7 +27,7 @@ ASIDE_HEADINGS = frozenset("risk test covers case scenario milestone quarter spr
 Columns = collections.namedtuple("Columns", "ids words aside says_requirements")
 # A section a spec keeps beside its requirements, by the whole of its heading: `### Risk scoring` and `# Risk Dashboard: Requirements` are not one.
 ASIDE_SECTION = re.compile(r"(?:\d+(?:\.\d+)*\.?\s+)?(?:open |known |key )?(?:questions?|risks?(?: and mitigations?)?|assumptions?(?: and (?:constraints?|dependencies))?|goals?|objectives?|glossary|revisions?|revision history|"
-                           r"change ?log|references?|appendix(?: [\w.-]+)?|out of scope|not in scope|non-?goals?|decisions?)", re.I)
+                           r"change ?log|references?|appendix(?: [\w.-]+)?|out of scope|not in scope|non-?goals?|decisions?)(?:\s*\(.*\))?", re.I)
 WHY_NOT_READ = {
     "column": "its column does not say it holds ids: head the column `ID`, or write the id with a colon and its words",
     "table": "its table does not say it holds requirements, and the file defines other ids more plainly: head the column `ID`",

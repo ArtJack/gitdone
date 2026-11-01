@@ -38,8 +38,8 @@ MERGE_INTO = re.compile(r"^Merged? (.+?) into \S+(.*)$")
 MERGE_REQUEST = re.compile(r"See merge request \S*!(\d{1,9})\b")
 REVERT_SUBJECT = re.compile(r"^revert\b", re.I)
 UPKEEP_SUBJECT = re.compile(r"^(?:fix|chore|ci|build|style|deps)(?:\([^)]*\))?!?:|^bump\b|^fix(?:es)?\b(?!-)|^upgrade\b.*\bto\s+v?\d", re.I)
-ISSUE_IN_A_NOTE = re.compile(r"^\s*issue\s*#(\d{1,9})\b", re.I)  # as `init --from-issues` writes it. `blocked by issue #40` is about something else
-ISSUE_IN_A_MESSAGE = re.compile(r"(?i:\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|see|for|issue)\s+)#(\d{1,9})\b|\(#(\d{1,9})\)")
+ISSUE_IN_A_NOTE = re.compile(rf"^\s*(?:{evidence.REQUIREMENT_ID}[\s,;.:]*)*issue\s*#(\d{{1,9}})\b", re.I)  # as `init --from-issues` writes it, after any id `link` put first. `blocked by issue #40` is about something else
+ISSUE_IN_A_MESSAGE = re.compile(r"(?i:\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|see|for|issue|implements?|part of)\s*:?\s+)#(\d{1,9})\b|\(#(\d{1,9})\)|^#(\d{1,9})\b")
 LONG_LIVED_BRANCH = re.compile(r"dev|develop|development|next|staging|stage|qa|test|testing|integration|trunk|master|main|prod|production|hotfix|release(?:[-/].*)?", re.I)  # a row citing one says nothing of what else is on it
 MERGED_BRANCH = re.compile(r"^Merge (?:remote-tracking )?branch '(?:origin/)?([^']+)'|^Merge pull request #\d+ from [^/\s]+/(\S+)")
 COMMIT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -343,9 +343,10 @@ class _Reading:
             for number in pattern.findall(commit["message"] if table is self.merge_requests else first_line):
                 if int(number) in table:
                     return set(table[int(number)]), "its pull request is cited as evidence"
-        for one, other in ISSUE_IN_A_MESSAGE.findall(commit["message"]) if self.issues else ():
-            if int(one or other) in self.issues:
-                return set(self.issues[int(one or other)]), NAMES_ITS_ISSUE
+        for said in ISSUE_IN_A_MESSAGE.findall(commit["message"]) if self.issues else ():
+            number = int(next(filter(None, said)))
+            if number in self.issues:
+                return set(self.issues[number]), NAMES_ITS_ISSUE
         return set(), ""
 
     def looks_like(self, words, date):
