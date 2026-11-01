@@ -47,8 +47,9 @@ def _left(plan, rows):
 
 
 def table_steps(plan, start=None, today=None, wanted=None):
-    """(steps, born, read_from). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on. `born` is the
-    table's first day, and None if it has no commit. `read_from` is the first day it could be read from, when there was too much of it to read, and None otherwise.
+    """(steps, born, read_from, set_aside). A step is (commit, date, rows before, rows after), oldest first, on the main line of this branch, from `start` on. `born` is the
+    table's first day, and None if it has no commit. `read_from` is the first day it could be read from, when there was too much of it to read, and None otherwise. `set_aside`
+    is each (row, date, kind) whose move says where the project stood, and is not in the steps.
 
     What is in the window is decided by when each commit was written, so a rebase, which rewrites only when a commit was made, moves nothing.
     """
@@ -56,7 +57,7 @@ def table_steps(plan, start=None, today=None, wanted=None):
     today = today or datetime.date.today()
     commits = list(reversed(history.table_commits(top, rel, first_parent=True, today=today, forward=False)))
     if not commits:
-        return [], None, None
+        return [], None, None, []
     born, read_from = commits[0][1], None
     from_day = start.isoformat() if start is not None else ""
     first = next((i for i, c in enumerate(commits) if c[1] >= from_day), len(commits))
@@ -69,41 +70,47 @@ def table_steps(plan, start=None, today=None, wanted=None):
     def stop(words):
         raise PlanError(f"git could not read the table's history: {words.strip()[:200]}")
     texts = gitio.blobs(top, [f"{sha}:{path}" for sha, _, path in read], failed=stop)
-    before, steps, reached, strict = None, [], [], plan.strict_kind.name
+    before, steps, reached, strict, set_aside = None, [], [], plan.strict_kind.name, []
     for (sha, date, _), text in zip(read, texts):
         if text is None:
             continue
         after, troubled = _kinds(plan, text, wanted)
         if not after or (troubled and before is not None and len(after) < len(before)):
             continue  # a table that lost rows to a broken line says nothing about them. One that still has them, with a typo or an old status, still says the rest
-        if before is not None and date >= from_day and date > born:  # on its first day a table is still saying where the project stands
-            steps.append((sha, date, before, after))
-            nums = [n for n in after.keys() & before.keys() if after[n] == strict and before[n] != strict]
-            if nums:
-                reached.append((len(steps) - 1, nums, text))
+        if before is not None and date >= from_day:
+            if date > born:
+                steps.append((sha, date, before, after))
+                nums = [n for n in after.keys() & before.keys() if after[n] == strict and before[n] != strict]
+                if nums:
+                    reached.append((len(steps) - 1, nums, text))
+            else:  # on its first day a table is still saying where the project stands
+                set_aside += [(n, date, after[n]) for n in after.keys() & before.keys() if after[n] != before[n]]
         before = after
-    return _old_work_set_aside(plan, top, steps, reached, born), born, read_from
+    return _old_work_set_aside(plan, top, steps, reached, born, set_aside), born, read_from, set_aside
 
 
-def _old_work_set_aside(plan, top, steps, reached, born):
-    """A row that reaches the strict kind on commits from before the table began was done already. Saying so is where the project stood, and not how fast it moves, and a project
-    brought under a tracker a row at a time would otherwise get a date from its own bookkeeping.
+def _old_work_set_aside(plan, top, steps, reached, born, set_aside):
+    """A row that reaches the strict kind on commits or tags from before the table began was done already. Saying so is where the project stood, and not how fast it moves, and a
+    project brought under a tracker a row at a time would otherwise get a date from its own bookkeeping.
     """
     cited = {}
     for at, nums, text in reached:
         rows = tables.parse(text.replace("\r\n", "\n"), plan.kinds).rows
         for num in nums:
-            commits = [str(claim.value) for claim in evidence.release_claims(plan, rows[num].words()) if claim.kind in ("sha", "bare")]
-            if commits:
-                cited[(at, num)] = commits
+            claims = [claim for claim in evidence.release_claims(plan, rows[num].words()) if claim.kind in ("sha", "bare", "tag")]
+            if claims:
+                cited[(at, num)] = [str(claim.value) if claim.kind != "tag" else f"refs/tags/{claim.value}" for claim in claims]
     if not cited:
         return steps
     wanted = sorted({commit for commits in cited.values() for commit in commits})
-    dates = {line[:7]: line.split()[-1] for line in gitio.git(top, "log", "--no-walk", "--ignore-missing", "--format=%H %as", "--stdin", stdin_text="\n".join(wanted) + "\n", timeout=60).out.splitlines()}
+    listed = gitio.git(top, "log", "--no-walk", "--ignore-missing", "--format=%H %as", "--stdin", stdin_text="\n".join(name for name in wanted if not name.startswith("refs/")) + "\n", timeout=60)
+    dates = {line[:7]: line.split()[-1] for line in listed.out.splitlines()}
+    dates.update((name, gitio.git(top, "log", "-1", "--format=%as", name).out.strip() or born) for name in wanted if name.startswith("refs/"))
     for (at, num), commits in cited.items():
-        if all(dates.get(commit[:7], born) < born for commit in commits):
+        if all(dates.get(commit if commit.startswith("refs/") else commit[:7], born) < born for commit in commits):
             sha, date, before, after = steps[at]
             steps[at] = (sha, date, {**before, num: after[num]}, after)
+            set_aside.append((num, date, after[num]))
     return steps
 
 
@@ -117,7 +124,7 @@ class Pace:
         self.moved = [0.0] * days
         self.live = [0.0] * days  # rows reaching the strict kind, less rows leaving it
         self.grew = [0.0] * days
-        self.added = self.removed = 0
+        self.added = self.removed = self.set_aside = 0
         self.newest_only = False
 
     def _take(self, offset, before, after):
@@ -164,12 +171,12 @@ def read_pace(plan, group=None, days=WINDOW, today=None):
     today = today or datetime.date.today()
     wanted = set(plan.group(group).domains) if group else None
     start = today - datetime.timedelta(days=days - 1)
-    steps, born, read_from = table_steps(plan, start, today, wanted)
+    steps, born, read_from, set_aside = table_steps(plan, start, today, wanted)
     if born is None:
         return None
-    start = max(start, datetime.date.fromisoformat(read_from or born))
-    pace = Pace(plan, today, (today - start).days + 1)
-    pace.newest_only = read_from is not None
+    start = max(start, datetime.date.fromisoformat(read_from) if read_from else datetime.date.fromisoformat(born) + datetime.timedelta(days=1))  # its first day is not in the pace, so it is not in the days either
+    pace = Pace(plan, today, max((today - start).days + 1, 1))
+    pace.newest_only, pace.set_aside = read_from is not None, len({row for row, _, _ in set_aside})
     for _, date, before, after in steps:
         pace._take(max((datetime.date.fromisoformat(date) - start).days, 0), before, after)
     return pace
@@ -271,14 +278,14 @@ def data(plan, group=None, days=WINDOW, today=None):
            "strict": top / len(rows) if rows else 0.0, "weighted": tables.score(rows, plan.weights), "window_days": days, "moving_days": 0,
            "pace_per_day": 0.0, "likely": None, "sure": None, "too_far": False, "largest_day_share": 0.0, "only_backwards": False, "last_change": None, "plan_problems": list(plan.signal_problems),
            "scope": {"added": 0, "removed": 0, "keeps_growing": False, "per_day": 0.0, "never_catches_up": False},
-           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": [], "all_groups": bool(plan.groups) and not group, "newest_only": False}
+           "live": _live_line(plan, rows, None, today), "deadline": None, "workstreams": [], "all_groups": bool(plan.groups) and not group, "newest_only": False, "set_aside": 0}
     root, rel = _where(plan)
     shallow = _is_shallow(root)
     pace = read_pace(plan, group=group, days=days, today=today)
     series = None
     if pace is not None:
         out.update(window_days=pace.days, moving_days=pace.moving_days(), pace_per_day=round(pace.per_day(), 3), largest_day_share=round(pace.largest_day_share(), 3),
-                   only_backwards=pace.only_backwards(), live=_live_line(plan, rows, pace, today), newest_only=pace.newest_only)
+                   only_backwards=pace.only_backwards(), live=_live_line(plan, rows, pace, today), newest_only=pace.newest_only, set_aside=pace.set_aside)
         out["scope"].update(added=pace.added, removed=pace.removed, per_day=round(sum(pace.grew) / pace.days, 3))
         if sum(1 for x in pace.moved if abs(x) > 1e-9) >= ENOUGH and pace.per_day() > 1e-9:
             series = pace.moved
@@ -487,6 +494,8 @@ def text(found):
             if found["largest_day_share"] > 0.5:
                 words += f" One day made {render.pct(found['largest_day_share'])} of it, so read the dates loosely."
         L.append(words)
+    if found["set_aside"]:
+        L.append(f"{_plural(found['set_aside'], 'row')} moved on the table's first day, or on commits from before it: that is where the project stood, so it is not in the pace.")
     scope = _scope_words(found)
     if scope:
         L.append(scope)

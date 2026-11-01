@@ -21,14 +21,23 @@ HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s")
 # What a table's heading says of a column, by its last word, as in `Req ID`. An id elsewhere in a table is a ticket, a severity or a standard, or refers to a requirement.
 ID_HEADINGS = frozenset("id identifier reqid req requirement story feature ref reference item # no number".split())
-WORDS_HEADINGS = ("requirement", "title", "description", "summary", "statement", "want", "text", "capability", "story", "feature", "name", "what")  # the first of these that a table has
+WORDS_HEADINGS = ("requirement", "requirements", "title", "description", "summary", "statement", "want", "text", "capability", "story", "feature", "name", "what")  # the first of these that a table has
+SAYS_REQUIREMENTS = frozenset("requirement requirements title summary statement want capability story feature".split())  # a table with one of these holds requirements, whatever its first column is called. `Description` does not say so: an error code has one
 ASIDE_HEADINGS = frozenset("risk test covers case scenario milestone quarter sprint release version date term severity sev priority pri status owner assignee author bug defect incident result type effort estimate phase".split())
-Columns = collections.namedtuple("Columns", "ids words aside")
-ASIDE_SECTION = re.compile(r"\b(?:questions?|risks?|assumptions?|glossary|revisions?|change ?log|references?|appendix|out of scope|not in scope|non-?goals?|decisions?)\b", re.I)  # what a spec keeps beside its requirements
+Columns = collections.namedtuple("Columns", "ids words aside says_requirements")
+# A section a spec keeps beside its requirements, by the whole of its heading: `### Risk scoring` and `# Risk Dashboard: Requirements` are not one.
+ASIDE_SECTION = re.compile(r"(?:\d+(?:\.\d+)*\.?\s+)?(?:open |known |key )?(?:questions?|risks?(?: and mitigations?)?|assumptions?(?: and (?:constraints?|dependencies))?|goals?|objectives?|glossary|revisions?|revision history|"
+                           r"change ?log|references?|appendix(?: [\w.-]+)?|out of scope|not in scope|non-?goals?|decisions?)", re.I)
+WHY_NOT_READ = {
+    "column": "its column does not say it holds ids: head the column `ID`, or write the id with a colon and its words",
+    "table": "its table does not say it holds requirements, and the file defines other ids more plainly: head the column `ID`",
+    "section": "it stands under a heading that does not hold requirements: move it, if it is one",
+    "prose": "it could be a sentence: write the id with a colon",
+}
 SAID = re.compile(r"\w+|(?<=\w)[+#＋＃]+|(?<!\w)[-+−](?=\d)|!=|[<>=≠≤≥＜＞＝]+|[%％$]")  # the words, and a mark that changes what is asked: `< 10 MB`, `C++`, `-1`. Everything else is punctuation, in any script
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 ID_IN_TEXT = evidence.REQUIREMENT_IN_TEXT
-NOT_REQUIREMENTS = frozenset("UTF ISO SHA MD RFC PEP HTTP IPV TLS SSL AES GPL CVE ASCII COVID TCP UDP WCAG SOC GPT IEEE ECMA PCI LLAMA".split())
+NOT_REQUIREMENTS = evidence.NOT_REQUIREMENTS
 
 
 class Item:
@@ -37,9 +46,10 @@ class Item:
         self.near = None
         self.is_section = False
         self.weak = False  # its words were a guess at the table's next cell, or it has none, so that a line defining it says more
-        self.passed_over = False  # an id in a column that does not say it holds them, which is not a requirement and is said
+        self.passed_over = False  # not read as a requirement, and said
+        self.why = ""
         self.also = []  # other ids in its cell
-        self.needs_kin = None  # read only beside what its file defines more plainly: a table's first column under a heading that does not say so, or `- REQ-4 words`, which could be prose
+        self.needs_kin = None  # read only if its file defines nothing plainer, or defines its kind of id: a table's first column under a heading that does not say so, what is under a section that does not hold requirements, or `- REQ-4 words`, which could be prose (that one not even then, alone)
 
     def where(self):
         return f"{self.source}:{self.line}"
@@ -62,7 +72,8 @@ def _columns(heading):
     lasts = [next(filter(None, reversed(re.split(r"[\s_.-]+", cell.strip("*_`: ").lower()))), "") for cell in _cells(heading)]
     return Columns([at for at, last in enumerate(lasts) if last in ID_HEADINGS],
                    sorted((at for at, last in enumerate(lasts) if last in WORDS_HEADINGS), key=lambda at: WORDS_HEADINGS.index(lasts[at])),
-                   {at for at, last in enumerate(lasts) if last in ASIDE_HEADINGS})
+                   {at for at, last in enumerate(lasts) if last in ASIDE_HEADINGS},
+                   any(last in SAYS_REQUIREMENTS for last in lasts))
 
 
 def _cell_id(cell):
@@ -80,7 +91,7 @@ def _table_item(line, index, source, columns):
     guess at the next cell along or the one before, which anything that defines the id outranks.
     """
     cells = _cells(line)
-    ids, words, aside = columns or ((), (), ())
+    ids, words, aside, says_requirements = columns or ((), (), (), False)
     sure = list(ids) + ([1] if 1 not in aside else [])
     passed = None
     for at in sure + [at for at in range(1, len(cells)) if at not in sure]:
@@ -101,12 +112,12 @@ def _table_item(line, index, source, columns):
         near = next((cells[n] for n in order if n not in aside and any(c.isalpha() for c in cells[n]) and not ID_IN_TEXT.fullmatch(cells[n])), "")
         item = Item(found.group(3), _clean_words(own or named or near), source, index + 1)
         item.weak, item.also = not (own or named), also
-        if columns and at == 1 and at not in ids:
+        if columns and at == 1 and at not in ids and not says_requirements:
             item.needs_kin = "table"
         return item
     if passed:
         item = Item(passed, "", source, index + 1)
-        item.passed_over = True
+        item.passed_over, item.why = True, WHY_NOT_READ["column"]
         return item
     return None
 
@@ -229,26 +240,42 @@ def parse(text, source, problems=None, passed_over=None):
             heading = item
             level = len(line.lstrip()) - len(line.lstrip().lstrip("#"))
             if aside_at is None or level <= aside_at:
-                aside_at = level if ASIDE_SECTION.search(line) and not (item and item.ident) else None
+                aside_at = level if ASIDE_SECTION.fullmatch(line.strip().lstrip("#").strip("*_:` ")) and not (item and item.ident) else None
         elif item and heading:
             heading.is_section, heading = not item.ident, None
-        if item and (item.passed_over or aside_at is not None):
+        if item and aside_at is not None and not item.passed_over:
+            if item.ident:
+                item.needs_kin = "section"
+            else:
+                item.passed_over, item.why = True, WHY_NOT_READ["section"]
+        if item and item.passed_over:
             if passed_over is not None:
                 passed_over.append(item)
         elif item:
             out.append(item)
             out.extend(Item(other, item.words, source, index + 1) for other in item.also)
     plain = {item.ident.split("-")[0] for item in out if item.ident and not item.needs_kin and not item.is_section}
-    for item in [item for item in out if item.needs_kin and item.ident.split("-")[0] not in plain]:
-        if plain or item.needs_kin == "prose":  # with nothing plainer in the file, a table's first column is its ids, and a line that could be prose is prose
-            out.remove(item)
-            if passed_over is not None and item.needs_kin == "table":
+    left_out = set()
+    for item in out:
+        if item.needs_kin and item.ident.split("-")[0] not in plain and (plain or item.needs_kin == "prose"):  # with nothing plainer in the file, a table's first column is its ids
+            left_out.add(id(item))
+            item.why = WHY_NOT_READ[item.needs_kin]
+            if passed_over is not None:
                 passed_over.append(item)
+    if passed_over is not None:
+        passed_over.sort(key=lambda item: item.line)
+    out = [item for item in out if id(item) not in left_out]
     if problems is not None:
         problems.extend(f"requirements: {source}: {words}" for words in trouble)
         if too_long:
             problems.append(f"requirements: {source}: line {too_long[0]} is over {LONGEST_LINE} characters, so it was not read" + (f", and {len(too_long) - 1} more" if len(too_long) > 1 else ""))
     return [item for item in out if not item.is_section]
+
+
+def passed_over_in(text, source):
+    passed_over = []
+    parse(text, source, None, passed_over)
+    return passed_over
 
 
 def read(plan):

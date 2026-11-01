@@ -106,9 +106,9 @@ def sections_from_checklist(text):
     checklist. `[x]` is the strict kind, and `[ ]` the last kind.
     """
     from . import requirements
-    sections, current, heading, waiting, seen, passed_over = [], None, "Scope", None, {}, []
-    read = {item.line for item in requirements.parse(text, "", None, passed_over)}  # what `matrix` will read of this file, so that the two agree
-    asides = {item.line for item in passed_over}
+    sections, current, heading, waiting, seen = [], None, "Scope", None, {}
+    read = {item.line for item in requirements.parse(text, "")}  # what `matrix` will read of this file, so that the two agree
+    asides = {item.line for item in requirements.passed_over_in(text, "")}
 
     def section():
         nonlocal current
